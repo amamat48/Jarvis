@@ -1,7 +1,8 @@
+import os
 import ollama
 
 
-MODEL = "llama3.2:3b"
+MODEL = os.getenv("JARVIS_LOCAL_MODEL", "llama3.2:3b")
 
 
 def chat(messages, tools=None):
