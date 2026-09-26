@@ -1,0 +1,593 @@
+{
+    "model": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+    "adapter": "/Users/pytmariana/jarvis/model/evaluations/jarvis_lora_v1",
+    "test_file": "/Users/pytmariana/jarvis/model/training_data/mlx/test.jsonl",
+    "test_examples": 16,
+    "total_assistant_steps": 26,
+    "passed_assistant_steps": 17,
+    "step_accuracy": 0.6538461538461539,
+    "passed_examples": 9,
+    "example_accuracy": 0.5625,
+    "comparison_to_baseline": {
+        "baseline_example_accuracy": 0.5625,
+        "jarvis_v1_example_accuracy": 0.5625,
+        "example_accuracy_delta": 0.0,
+        "baseline_step_accuracy": 0.6923076923076923,
+        "jarvis_v1_step_accuracy": 0.6538461538461539,
+        "step_accuracy_delta": -0.038461538461538436
+    },
+    "results": [
+        {
+            "example_index": 1,
+            "steps": [
+                {
+                    "example_index": 1,
+                    "step_index": 1,
+                    "passed": true,
+                    "expected_tools": [
+                        "read_file"
+                    ],
+                    "actual_tools": [
+                        "read_file"
+                    ],
+                    "expected_arguments": [
+                        {
+                            "path": "brain/router.py"
+                        }
+                    ],
+                    "actual_arguments": [
+                        {
+                            "path": "brain/router.py"
+                        }
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"brain/router.py\"}}\n</tool_call>"
+                }
+            ],
+            "passed_steps": 1,
+            "total_steps": 1,
+            "passed": true
+        },
+        {
+            "example_index": 2,
+            "steps": [
+                {
+                    "example_index": 2,
+                    "step_index": 1,
+                    "passed": true,
+                    "expected_tools": [
+                        "recall_memory"
+                    ],
+                    "actual_tools": [
+                        "recall_memory"
+                    ],
+                    "expected_arguments": [
+                        {}
+                    ],
+                    "actual_arguments": [
+                        {}
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"recall_memory\", \"arguments\": {}}\n</tool_call>"
+                },
+                {
+                    "example_index": 2,
+                    "step_index": 2,
+                    "passed": true,
+                    "expected_tools": [],
+                    "actual_tools": [],
+                    "expected_arguments": [],
+                    "actual_arguments": [],
+                    "response": "I don't currently have any persistent memories stored for you."
+                }
+            ],
+            "passed_steps": 2,
+            "total_steps": 2,
+            "passed": true
+        },
+        {
+            "example_index": 3,
+            "steps": [
+                {
+                    "example_index": 3,
+                    "step_index": 1,
+                    "passed": true,
+                    "expected_tools": [
+                        "search_files"
+                    ],
+                    "actual_tools": [
+                        "search_files"
+                    ],
+                    "expected_arguments": [
+                        {
+                            "query": "router implementation"
+                        }
+                    ],
+                    "actual_arguments": [
+                        {
+                            "query": "router"
+                        }
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"search_files\", \"arguments\": {\"query\": \"router\"}}\n</tool_call>"
+                },
+                {
+                    "example_index": 3,
+                    "step_index": 2,
+                    "passed": false,
+                    "expected_tools": [
+                        "search_files"
+                    ],
+                    "actual_tools": [
+                        "list_files"
+                    ],
+                    "expected_arguments": [
+                        {
+                            "query": "def chat"
+                        }
+                    ],
+                    "actual_arguments": [
+                        {}
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"list_files\", \"arguments\": {}}\n</tool_call>"
+                },
+                {
+                    "example_index": 3,
+                    "step_index": 3,
+                    "passed": false,
+                    "expected_tools": [
+                        "read_file"
+                    ],
+                    "actual_tools": [],
+                    "expected_arguments": [
+                        {
+                            "path": "brain/router.py"
+                        }
+                    ],
+                    "actual_arguments": [],
+                    "response": "The files that contain a `chat` function are `brain/local.py` and `brain/router.py`."
+                },
+                {
+                    "example_index": 3,
+                    "step_index": 4,
+                    "passed": false,
+                    "expected_tools": [],
+                    "actual_tools": [
+                        "read_file"
+                    ],
+                    "expected_arguments": [],
+                    "actual_arguments": [
+                        {
+                            "path": "brain/local.py"
+                        }
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"brain/local.py\"}}\n</tool_call>"
+                }
+            ],
+            "passed_steps": 1,
+            "total_steps": 4,
+            "passed": false
+        },
+        {
+            "example_index": 4,
+            "steps": [
+                {
+                    "example_index": 4,
+                    "step_index": 1,
+                    "passed": false,
+                    "expected_tools": [],
+                    "actual_tools": [
+                        "recall_memory"
+                    ],
+                    "expected_arguments": [],
+                    "actual_arguments": [
+                        {}
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"recall_memory\", \"arguments\": {}}\n</tool_call>"
+                }
+            ],
+            "passed_steps": 0,
+            "total_steps": 1,
+            "passed": false
+        },
+        {
+            "example_index": 5,
+            "steps": [
+                {
+                    "example_index": 5,
+                    "step_index": 1,
+                    "passed": true,
+                    "expected_tools": [
+                        "calculate"
+                    ],
+                    "actual_tools": [
+                        "calculate"
+                    ],
+                    "expected_arguments": [
+                        {
+                            "expression": "3180 / 15"
+                        }
+                    ],
+                    "actual_arguments": [
+                        {
+                            "expression": "3180 / 15"
+                        }
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"calculate\", \"arguments\": {\"expression\": \"3180 / 15\"}}\n</tool_call>"
+                }
+            ],
+            "passed_steps": 1,
+            "total_steps": 1,
+            "passed": true
+        },
+        {
+            "example_index": 6,
+            "steps": [
+                {
+                    "example_index": 6,
+                    "step_index": 1,
+                    "passed": true,
+                    "expected_tools": [
+                        "run_python_file"
+                    ],
+                    "actual_tools": [
+                        "run_python_file"
+                    ],
+                    "expected_arguments": [
+                        {
+                            "path": "test.py"
+                        }
+                    ],
+                    "actual_arguments": [
+                        {
+                            "path": "test.py"
+                        }
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"run_python_file\", \"arguments\": {\"path\": \"test.py\"}}\n</tool_call>"
+                },
+                {
+                    "example_index": 6,
+                    "step_index": 2,
+                    "passed": false,
+                    "expected_tools": [],
+                    "actual_tools": [
+                        "debug_python_file"
+                    ],
+                    "expected_arguments": [],
+                    "actual_arguments": [
+                        {
+                            "path": "test.py"
+                        }
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"debug_python_file\", \"arguments\": {\"path\": \"test.py\"}}\n</tool_call>"
+                }
+            ],
+            "passed_steps": 1,
+            "total_steps": 2,
+            "passed": false
+        },
+        {
+            "example_index": 7,
+            "steps": [
+                {
+                    "example_index": 7,
+                    "step_index": 1,
+                    "passed": true,
+                    "expected_tools": [
+                        "search_files"
+                    ],
+                    "actual_tools": [
+                        "search_files"
+                    ],
+                    "expected_arguments": [
+                        {
+                            "query": "TOOLS"
+                        }
+                    ],
+                    "actual_arguments": [
+                        {
+                            "query": "tool registry"
+                        }
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"search_files\", \"arguments\": {\"query\": \"tool registry\"}}\n</tool_call>"
+                }
+            ],
+            "passed_steps": 1,
+            "total_steps": 1,
+            "passed": true
+        },
+        {
+            "example_index": 8,
+            "steps": [
+                {
+                    "example_index": 8,
+                    "step_index": 1,
+                    "passed": false,
+                    "expected_tools": [
+                        "remember_memory"
+                    ],
+                    "actual_tools": [],
+                    "expected_arguments": [
+                        {
+                            "key": "programming_preference",
+                            "value": "C++"
+                        }
+                    ],
+                    "actual_arguments": [],
+                    "response": ""
+                },
+                {
+                    "example_index": 8,
+                    "step_index": 2,
+                    "passed": true,
+                    "expected_tools": [],
+                    "actual_tools": [],
+                    "expected_arguments": [],
+                    "actual_arguments": [],
+                    "response": ""
+                }
+            ],
+            "passed_steps": 1,
+            "total_steps": 2,
+            "passed": false
+        },
+        {
+            "example_index": 9,
+            "steps": [
+                {
+                    "example_index": 9,
+                    "step_index": 1,
+                    "passed": true,
+                    "expected_tools": [
+                        "debug_python_file"
+                    ],
+                    "actual_tools": [
+                        "debug_python_file"
+                    ],
+                    "expected_arguments": [
+                        {
+                            "path": "test.py"
+                        }
+                    ],
+                    "actual_arguments": [
+                        {
+                            "path": "test.py"
+                        }
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"debug_python_file\", \"arguments\": {\"path\": \"test.py\"}}\n</tool_call>"
+                }
+            ],
+            "passed_steps": 1,
+            "total_steps": 1,
+            "passed": true
+        },
+        {
+            "example_index": 10,
+            "steps": [
+                {
+                    "example_index": 10,
+                    "step_index": 1,
+                    "passed": false,
+                    "expected_tools": [],
+                    "actual_tools": [
+                        "remember_memory"
+                    ],
+                    "expected_arguments": [],
+                    "actual_arguments": [
+                        {
+                            "key": "user_reminder",
+                            "value": "Remember to take note of important details and actions."
+                        }
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"remember_memory\", \"arguments\": {\"key\": \"user_reminder\", \"value\": \"Remember to take note of important details and actions.\"}}\n</tool_call>"
+                }
+            ],
+            "passed_steps": 0,
+            "total_steps": 1,
+            "passed": false
+        },
+        {
+            "example_index": 11,
+            "steps": [
+                {
+                    "example_index": 11,
+                    "step_index": 1,
+                    "passed": true,
+                    "expected_tools": [],
+                    "actual_tools": [],
+                    "expected_arguments": [],
+                    "actual_arguments": [],
+                    "response": "Control systems are fascinating and essential components in modern engineering and technology."
+                }
+            ],
+            "passed_steps": 1,
+            "total_steps": 1,
+            "passed": true
+        },
+        {
+            "example_index": 12,
+            "steps": [
+                {
+                    "example_index": 12,
+                    "step_index": 1,
+                    "passed": true,
+                    "expected_tools": [],
+                    "actual_tools": [],
+                    "expected_arguments": [],
+                    "actual_arguments": [],
+                    "response": "I'm functioning well, thank you for asking!"
+                }
+            ],
+            "passed_steps": 1,
+            "total_steps": 1,
+            "passed": true
+        },
+        {
+            "example_index": 13,
+            "steps": [
+                {
+                    "example_index": 13,
+                    "step_index": 1,
+                    "passed": false,
+                    "expected_tools": [
+                        "search_files"
+                    ],
+                    "actual_tools": [
+                        "list_files"
+                    ],
+                    "expected_arguments": [
+                        {
+                            "query": "calculate"
+                        }
+                    ],
+                    "actual_arguments": [
+                        {}
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"list_files\", \"arguments\": {}}\n</tool_call>"
+                },
+                {
+                    "example_index": 13,
+                    "step_index": 2,
+                    "passed": true,
+                    "expected_tools": [
+                        "read_file"
+                    ],
+                    "actual_tools": [
+                        "read_file"
+                    ],
+                    "expected_arguments": [
+                        {
+                            "path": "tools/calculator.py"
+                        }
+                    ],
+                    "actual_arguments": [
+                        {
+                            "path": "calculator.py"
+                        }
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"calculator.py\"}}\n</tool_call>"
+                },
+                {
+                    "example_index": 13,
+                    "step_index": 3,
+                    "passed": true,
+                    "expected_tools": [],
+                    "actual_tools": [],
+                    "expected_arguments": [],
+                    "actual_arguments": [],
+                    "response": "The `calculate` function does not import any other modules."
+                }
+            ],
+            "passed_steps": 2,
+            "total_steps": 3,
+            "passed": false
+        },
+        {
+            "example_index": 14,
+            "steps": [
+                {
+                    "example_index": 14,
+                    "step_index": 1,
+                    "passed": false,
+                    "expected_tools": [],
+                    "actual_tools": [
+                        "list_files"
+                    ],
+                    "expected_arguments": [],
+                    "actual_arguments": [
+                        {}
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"list_files\", \"arguments\": {}}\n</tool_call>"
+                }
+            ],
+            "passed_steps": 0,
+            "total_steps": 1,
+            "passed": false
+        },
+        {
+            "example_index": 15,
+            "steps": [
+                {
+                    "example_index": 15,
+                    "step_index": 1,
+                    "passed": true,
+                    "expected_tools": [
+                        "list_files"
+                    ],
+                    "actual_tools": [
+                        "list_files"
+                    ],
+                    "expected_arguments": [
+                        {}
+                    ],
+                    "actual_arguments": [
+                        {}
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"list_files\", \"arguments\": {}}\n</tool_call>"
+                }
+            ],
+            "passed_steps": 1,
+            "total_steps": 1,
+            "passed": true
+        },
+        {
+            "example_index": 16,
+            "steps": [
+                {
+                    "example_index": 16,
+                    "step_index": 1,
+                    "passed": true,
+                    "expected_tools": [
+                        "search_files"
+                    ],
+                    "actual_tools": [
+                        "search_files"
+                    ],
+                    "expected_arguments": [
+                        {
+                            "query": "subprocess.run"
+                        }
+                    ],
+                    "actual_arguments": [
+                        {
+                            "query": "runner"
+                        }
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"search_files\", \"arguments\": {\"query\": \"runner\"}}\n</tool_call>"
+                },
+                {
+                    "example_index": 16,
+                    "step_index": 2,
+                    "passed": true,
+                    "expected_tools": [
+                        "read_file"
+                    ],
+                    "actual_tools": [
+                        "read_file"
+                    ],
+                    "expected_arguments": [
+                        {
+                            "path": "tools/code_runner.py"
+                        }
+                    ],
+                    "actual_arguments": [
+                        {
+                            "path": "jarvis/tools/code_runner.py"
+                        }
+                    ],
+                    "response": "<tool_call>\n{\"name\": \"read_file\", \"arguments\": {\"path\": \"jarvis/tools/code_runner.py\"}}\n</tool_call>"
+                },
+                {
+                    "example_index": 16,
+                    "step_index": 3,
+                    "passed": true,
+                    "expected_tools": [],
+                    "actual_tools": [],
+                    "expected_arguments": [],
+                    "actual_arguments": [],
+                    "response": "The Python runner, located at `tools/code_runner.py`, has an execution timeout of 10 seconds."
+                }
+            ],
+            "passed_steps": 3,
+            "total_steps": 3,
+            "passed": true
+        }
+    ]
+}

@@ -1,69 +1,9 @@
 from brain.router import chat
-from tools.registry import TOOLS
+from tools.registry import TOOLS, select_tools
 from tools.runner import execute_tool
+from voice_input import listen
+from voice_output import speak
 
-
-SYSTEM_PROMPT = """
-You are JARVIS, a personal AI assistant.
-
-You assist with engineering, programming, research, learning,
-productivity, and general questions.
-
-Be intelligent, concise, and technically accurate.
-Explain concepts clearly when asked.
-
-
-You have access to calculator, file-reading, and project file-listing tools.
-Use the file-listing tool when you need to understand what files are available
-in the project.
-Use the calculator whenever the user asks you to perform arithmetic.
-Use the file-reading tool when the user asks you to inspect a file.
-
-You also have a Python execution tool.
-Use it when you need to run a Python file in the JARVIS project and inspect its output or errors.
-Only run Python files when appropriate for the user's request.
-
-You can take up to an extra 15 seconds to think before responding. Use this time to reason about the user's request, plan your response, and decide whether to use a tool.
-
-Tool usage rules:
-
-    - Use the calculator only for mathematical calculations.
-    - Do not use the calculator to inspect, debug, or execute Python code.
-    - Use read_file when you need to inspect source code.
-    - Use run_python_file when you need to execute a Python file.
-    - When debugging code, inspect the relevant source code and program output before drawing conclusions.
-    - Distinguish syntax errors, runtime errors, and logic errors.
-    - Do not claim that an error occurred unless the tool output actually shows an error.
-    - Use search_files when you need to locate a function, class, variable,
-    error message, or other text across the project.
-    - Prefer searching for relevant code before reading large numbers of files.
-    - Use the line numbers returned by search_files when discussing where a
-    problem occurs.
-
-Memory rules:
-
-    - You have persistent memory tools.
-    - Only store information when the user explicitly asks you to remember it.
-    - Never store passwords, API keys, authentication tokens, or other secrets.
-    - Use recall_memory when the user asks what you remember.
-    - Stored memories persist between JARVIS sessions.
-
-Debugging rules:
-
-    - When the user asks you to debug a Python file, prefer the debug_python_file tool.
-    - Use the tool's source code and execution results as evidence.
-    - Distinguish syntax errors, runtime errors, and logic errors.
-    - A program having exit code 0 does not mean it is logically correct.
-    - Do not claim an error occurred unless the execution results show one.
-    - Compare the program's actual behavior with the intended behavior when the user provides it.
-    - Explain the specific line or expression responsible for a detected logic error.
-    - Do not suggest unrelated changes.
-
-The user is an engineering student interested in electronics,
-aerospace, controls, DSP, programming, AI, physics, and math.
-
-Do not pretend to have capabilities or information you do not have.
-"""
 
 
 def main():
@@ -82,6 +22,13 @@ def main():
     while True:
 
         message = input("You: ")
+
+        using_voice = False
+
+        if message.lower() == "voice":
+            using_voice = True
+            message = listen()
+            print(f"You (voice): {message}")
 
         if message.lower() == "exit":
             print("JARVIS: Shutting down.")
@@ -106,10 +53,12 @@ def main():
             }
         )
 
+        available_tools = select_tools(message)
+
         # Ask the model what to do
         response = chat(
             messages,
-            tools=list(TOOLS.values())
+            tools=list(available_tools.values())
         )
 
         # Record the model's response
@@ -130,7 +79,6 @@ def main():
 
                 try:
                     result = execute_tool(tool_name, arguments)
-                    print(f"[Tool result: {result}]", flush=True)
 
                 except Exception as error:
                     print(f"[TOOL ERROR: {error}]", flush=True)
@@ -148,14 +96,15 @@ def main():
             # Ask the model to respond using the tool result
             response = chat(
                 messages,
-                tools=list(TOOLS.values())
+                tools=list(available_tools.values())
             )
 
-        print(
-            f"JARVIS: {response.message.content}\n",
-            flush=True
-        )
+        final_response = response.message.content
 
+        print(f"JARVIS: {final_response}")
+
+        if using_voice:
+            speak(final_response)
 
 if __name__ == "__main__":
     main()

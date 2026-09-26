@@ -1,0 +1,740 @@
+≈XXXX"""
+Qwen3-4B Baseline Evaluation - 32 Case Version
+================================================
+
+This script evaluates the UNMODIFIED Qwen3-4B-Instruct-2507-4bit model
+against the expanded 32-case JARVIS evaluation set.
+
+The purpose is to create the control measurement for JARVIS v2.
+
+We already have an original 16-case baseline. That result is preserved
+in:
+
+    qwen_baseline_results.json
+
+This script does NOT overwrite that result.
+
+Instead, it creates:
+
+    qwen_baseline_32_results.json
+
+WHY WE NEED A 32-CASE BASELINE
+------------------------------
+
+Our original test set contained 16 cases.
+
+We added 16 new evaluation-only cases to increase coverage of:
+
+    - tool selection
+    - no-tool decisions
+    - missing information
+    - memory behavior
+    - code inspection
+    - Python execution
+    - debugging
+    - multi-step investigation
+    - failed-search recovery
+
+The new cases are NOT part of the training dataset.
+
+That means the model has never been trained on those exact evaluation
+examples.
+
+EXPERIMENTAL DESIGN
+-------------------
+
+For every assistant decision in every test case:
+
+    1. Build the conversation context.
+    2. Give Qwen ALL current JARVIS tools.
+    3. Let Qwen decide whether to call a tool.
+    4. Parse any native Qwen <tool_call> blocks.
+    5. Compare the tool sequence against the reference behavior.
+
+We intentionally expose ALL tools.
+
+That is important because:
+
+    "Hello Jarvis."
+
+should be a real no-tool decision.
+
+The model cannot pass by simply having no tools available.
+
+This evaluator measures TOOL BEHAVIOR rather than exact wording.
+"""
+
+import json
+import re
+import sys
+from pathlib import Path
+
+
+# ============================================================================
+# PROJECT PATH SETUP
+# ============================================================================
+#
+# The script is located at:
+#
+#     jarvis/model/evaluations/qwen_baseline_32.py
+#
+# parents[0] = model/evaluations
+# parents[1] = model
+# parents[2] = jarvis
+#
+# We add the project root to Python's import path so that modules such as
+# model.training_data.mlx_tools can be imported when this file is executed
+# directly with:
+#
+#     python model/evaluations/qwen_baseline_32.py
+# ============================================================================
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+
+# ============================================================================
+# MLX IMPORTS
+# ============================================================================
+
+from mlx_lm import load, generate
+
+
+# ============================================================================
+# JARVIS TOOL SCHEMAS
+# ============================================================================
+
+from model.training_data.mlx_tools import TOOLS_SCHEMA
+
+
+# ============================================================================
+# FILE CONFIGURATION
+# ============================================================================
+
+MODEL = "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+
+
+# This is the newly created 32-case evaluation set.
+#
+# It contains:
+#
+#     16 original held-out cases
+#     +
+#     16 new evaluation-only cases
+#
+# The file is intentionally separate from the training dataset.
+EVALUATION_FILE = (
+    PROJECT_ROOT
+    / "model"
+    / "evaluations"
+    / "jarvis_eval_32.jsonl"
+)
+
+
+# This file contains the new baseline result.
+#
+# We do NOT overwrite qwen_baseline_results.json because that file represents
+# the original 16-case experiment.
+RESULTS_FILE = (
+    PROJECT_ROOT
+    / "model"
+    / "evaluations"
+    / "qwen_baseline_32_results.json"
+)
+
+
+# Maximum number of tokens Qwen can generate for one assistant decision.
+#
+# Tool calls are generally very short. 256 tokens provides enough room for:
+#
+#     - a tool call
+#     - a concise no-tool answer
+#     - a short explanatory response
+#
+# without making evaluation unnecessarily slow.
+MAX_TOKENS = 256
+
+
+# ============================================================================
+# TOOL-CALL PARSER
+# ============================================================================
+#
+# Qwen3 represents native tool calls using:
+#
+#     <tool_call>
+#     {"name": "...", "arguments": {...}}
+#     </tool_call>
+#
+# We parse this format directly.
+#
+# This is useful because the evaluation should record malformed tool calls
+# rather than silently throwing them away.
+# ============================================================================
+
+TOOL_CALL_PATTERN = re.compile(
+    r"<tool_call>\s*(.*?)\s*</tool_call>",
+    re.DOTALL,
+)
+
+
+def parse_tool_calls(response_text: str) -> list[dict]:
+    """
+    Extract all native Qwen tool calls from a model response.
+
+    Returns a list such as:
+
+        [
+            {
+                "name": "calculate",
+                "arguments": {
+                    "expression": "137 * 29"
+                },
+                "parse_error": False,
+                "raw": "..."
+            }
+        ]
+
+    If no tool call exists, returns [].
+
+    If the model emits a <tool_call> block containing invalid JSON,
+    we preserve that failure in the returned structure.
+    """
+
+    calls = []
+
+    matches = TOOL_CALL_PATTERN.findall(response_text)
+
+    for match in matches:
+        raw_tool_call = match.strip()
+
+        try:
+            parsed = json.loads(raw_tool_call)
+
+        except json.JSONDecodeError:
+            calls.append({
+                "name": None,
+                "arguments": {},
+                "parse_error": True,
+                "raw": raw_tool_call,
+            })
+            continue
+
+        if not isinstance(parsed, dict):
+            calls.append({
+                "name": None,
+                "arguments": {},
+                "parse_error": True,
+                "raw": raw_tool_call,
+            })
+            continue
+
+        name = parsed.get("name")
+        arguments = parsed.get("arguments", {})
+
+        # Most Qwen tool calls use a JSON object for arguments.
+        #
+        # We also handle the case where arguments themselves have been
+        # serialized as a JSON string. This keeps the evaluator tolerant
+        # of representation differences.
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = {
+                    "_raw_arguments": arguments
+                }
+
+        calls.append({
+            "name": name,
+            "arguments": arguments,
+            "parse_error": False,
+            "raw": raw_tool_call,
+        })
+
+    return calls
+
+
+# ============================================================================
+# EXPECTED TOOL EXTRACTION
+# ============================================================================
+
+def get_expected_tool_calls(message: dict) -> list[dict]:
+    """
+    Extract the reference tool calls from one assistant message.
+
+    Our evaluation dataset stores tool-call arguments as JSON strings
+    after MLX conversion, so this function converts them back into Python
+    dictionaries for easier comparison and result reporting.
+    """
+
+    expected = []
+
+    for call in message.get("tool_calls", []):
+        function = call.get("function", {})
+
+        name = function.get("name")
+        arguments = function.get("arguments", {})
+
+        if isinstance(arguments, str):
+            try:
+                arguments = json.loads(arguments)
+            except json.JSONDecodeError:
+                arguments = {
+                    "_raw_arguments": arguments
+                }
+
+        expected.append({
+            "name": name,
+            "arguments": arguments,
+        })
+
+    return expected
+
+
+# ============================================================================
+# TOOL-SEQUENCE COMPARISON
+# ============================================================================
+
+def compare_tool_sequences(
+    expected_calls: list[dict],
+    actual_calls: list[dict],
+) -> bool:
+    """
+    Compare the ordered sequence of tool names.
+
+    Example:
+
+        Expected:
+            ["search_files", "read_file"]
+
+        Actual:
+            ["search_files", "read_file"]
+
+        Result:
+            True
+
+    We intentionally compare tool names rather than exact argument strings
+    for the primary behavioral metric.
+
+    That's because some tasks can have more than one valid execution strategy.
+
+    For example:
+
+        3180 / 15, then multiply by 7
+
+    could be performed as either:
+
+        calculate("(3180 / 15) * 7")
+
+    or:
+
+        calculate("3180 / 15")
+        calculate("212 * 7")
+
+    Both are reasonable computational strategies.
+
+    We still record the arguments so we can inspect them later.
+    """
+
+    expected_names = [
+        call.get("name")
+        for call in expected_calls
+    ]
+
+    actual_names = [
+        call.get("name")
+        for call in actual_calls
+    ]
+
+    return expected_names == actual_names
+
+
+# ============================================================================
+# SINGLE ASSISTANT-STEP EVALUATION
+# ============================================================================
+
+def evaluate_assistant_step(
+    model,
+    tokenizer,
+    context_messages: list[dict],
+    reference_message: dict,
+    example_index: int,
+    step_index: int,
+) -> dict:
+    """
+    Evaluate a single assistant decision.
+
+    The reference assistant response is hidden from the model.
+
+    Qwen receives:
+
+        conversation BEFORE the assistant response
+        +
+        ALL eight current JARVIS tool definitions
+
+    The model then decides what to do.
+
+    This is effectively a teacher-forced evaluation: later decisions are
+    evaluated using the reference conversation rather than the model's own
+    earlier mistakes.
+
+    That keeps one bad early decision from contaminating every later score.
+    """
+
+    prompt = tokenizer.apply_chat_template(
+        context_messages,
+        tools=TOOLS_SCHEMA,
+        add_generation_prompt=True,
+        tokenize=False,
+    )
+
+    try:
+        response_text = generate(
+            model=model,
+            tokenizer=tokenizer,
+            prompt=prompt,
+            max_tokens=MAX_TOKENS,
+            verbose=False,
+        )
+
+    except Exception as error:
+        expected_calls = get_expected_tool_calls(
+            reference_message
+        )
+
+        return {
+            "example_index": example_index,
+            "step_index": step_index,
+            "passed": False,
+            "error": str(error),
+            "expected_tools": [
+                call.get("name")
+                for call in expected_calls
+            ],
+            "actual_tools": [],
+            "expected_arguments": [
+                call.get("arguments")
+                for call in expected_calls
+            ],
+            "actual_arguments": [],
+            "response": "",
+        }
+
+    actual_calls = parse_tool_calls(
+        response_text
+    )
+
+    expected_calls = get_expected_tool_calls(
+        reference_message
+    )
+
+    passed = compare_tool_sequences(
+        expected_calls,
+        actual_calls,
+    )
+
+    return {
+        "example_index": example_index,
+        "step_index": step_index,
+        "passed": passed,
+        "expected_tools": [
+            call.get("name")
+            for call in expected_calls
+        ],
+        "actual_tools": [
+            call.get("name")
+            for call in actual_calls
+        ],
+        "expected_arguments": [
+            call.get("arguments")
+            for call in expected_calls
+        ],
+        "actual_arguments": [
+            call.get("arguments")
+            for call in actual_calls
+        ],
+        "response": response_text,
+    }
+
+
+# ============================================================================
+# COMPLETE EXAMPLE EVALUATION
+# ============================================================================
+
+def evaluate_example(
+    model,
+    tokenizer,
+    example: dict,
+    example_index: int,
+) -> dict:
+    """
+    Evaluate every assistant decision in one evaluation case.
+
+    A case might contain:
+
+        user
+        assistant -> search_files
+        tool
+        assistant -> read_file
+        tool
+        assistant -> final answer
+
+    That represents three assistant decisions.
+
+    Each decision gets evaluated separately.
+    """
+
+    messages = example.get("messages", [])
+
+    step_results = []
+
+    for message_index, message in enumerate(messages):
+
+        if message.get("role") != "assistant":
+            continue
+
+        # The model receives every message before the current assistant
+        # response. The reference assistant message itself is hidden.
+        context = messages[:message_index]
+
+        result = evaluate_assistant_step(
+            model=model,
+            tokenizer=tokenizer,
+            context_messages=context,
+            reference_message=message,
+            example_index=example_index,
+            step_index=len(step_results) + 1,
+        )
+
+        step_results.append(result)
+
+    passed_steps = sum(
+        1
+        for result in step_results
+        if result.get("passed")
+    )
+
+    return {
+        "id": example.get("id"),
+        "example_index": example_index,
+        "steps": step_results,
+        "passed_steps": passed_steps,
+        "total_steps": len(step_results),
+        "passed": (
+            len(step_results) > 0
+            and passed_steps == len(step_results)
+        ),
+    }
+
+
+# ============================================================================
+# EVALUATION DATA LOADING
+# ============================================================================
+
+def load_evaluation_examples() -> list[dict]:
+    """
+    Load the complete 32-case evaluation set.
+
+    The function also verifies that exactly 32 examples exist.
+
+    We fail early if the evaluation file is missing or malformed because
+    running an incomplete evaluation would make comparison with future
+    JARVIS versions misleading.
+    """
+
+    if not EVALUATION_FILE.exists():
+        raise FileNotFoundError(
+            f"Evaluation file not found:\n"
+            f"{EVALUATION_FILE}"
+        )
+
+    examples = []
+
+    for line_number, line in enumerate(
+        EVALUATION_FILE.read_text().splitlines(),
+        start=1,
+    ):
+        if not line.strip():
+            continue
+
+        try:
+            examples.append(
+                json.loads(line)
+            )
+        except json.JSONDecodeError as error:
+            raise ValueError(
+                f"Invalid JSON at "
+                f"{EVALUATION_FILE}:{line_number}: "
+                f"{error}"
+            ) from error
+
+    if len(examples) != 32:
+        raise ValueError(
+            f"Expected 32 evaluation examples, "
+            f"found {len(examples)}."
+        )
+
+    return examples
+
+
+# ============================================================================
+# MAIN BASELINE EVALUATION
+# ============================================================================
+
+def main():
+    print("=== JARVIS QWEN3-4B 32-CASE BASELINE ===")
+    print()
+
+    examples = load_evaluation_examples()
+
+    print(f"Model: {MODEL}")
+    print(f"Evaluation set: {EVALUATION_FILE}")
+    print(f"Evaluation examples: {len(examples)}")
+    print()
+    print("Loading Qwen3-4B-Instruct-2507-4bit...")
+
+    model, tokenizer = load(MODEL)
+
+    print("Model loaded successfully.")
+    print()
+
+    all_results = []
+
+    total_steps = 0
+    passed_steps = 0
+
+    passed_examples = 0
+
+    for example_index, example in enumerate(
+        examples,
+        start=1,
+    ):
+        print(
+            f"Running baseline test "
+            f"{example_index}/{len(examples)}..."
+        )
+
+        result = evaluate_example(
+            model=model,
+            tokenizer=tokenizer,
+            example=example,
+            example_index=example_index,
+        )
+
+        all_results.append(result)
+
+        total_steps += result["total_steps"]
+        passed_steps += result["passed_steps"]
+
+        if result["passed"]:
+            passed_examples += 1
+
+        print(
+            f"  Example: "
+            f"{'PASS' if result['passed'] else 'FAIL'}"
+        )
+
+        for step in result["steps"]:
+            print(
+                f"    Step {step['step_index']}: "
+                f"{'PASS' if step['passed'] else 'FAIL'}"
+            )
+
+            print(
+                f"      Expected: "
+                f"{step['expected_tools']}"
+            )
+
+            print(
+                f"      Actual:   "
+                f"{step['actual_tools']}"
+            )
+
+        print()
+
+    # ------------------------------------------------------------------------
+    # Calculate final metrics.
+    # ------------------------------------------------------------------------
+
+    if total_steps:
+        step_accuracy = (
+            passed_steps / total_steps
+        )
+    else:
+        step_accuracy = 0.0
+
+    if examples:
+        example_accuracy = (
+            passed_examples / len(examples)
+        )
+    else:
+        example_accuracy = 0.0
+
+    # ------------------------------------------------------------------------
+    # Save the complete result.
+    #
+    # We preserve:
+    #
+    #     - expected tools
+    #     - actual tools
+    #     - arguments
+    #     - raw generated response
+    #
+    # This allows us to inspect exactly where Qwen and later JARVIS versions
+    # differ.
+    # ------------------------------------------------------------------------
+
+    output = {
+        "model": MODEL,
+        "evaluation_file": str(EVALUATION_FILE),
+        "evaluation_examples": len(examples),
+        "total_assistant_steps": total_steps,
+        "passed_assistant_steps": passed_steps,
+        "step_accuracy": step_accuracy,
+        "passed_examples": passed_examples,
+        "example_accuracy": example_accuracy,
+        "results": all_results,
+    }
+
+    RESULTS_FILE.write_text(
+        json.dumps(
+            output,
+            indent=4,
+            ensure_ascii=False,
+        )
+    )
+
+    # ------------------------------------------------------------------------
+    # Print summary.
+    # ------------------------------------------------------------------------
+
+    print("=== 32-CASE BASELINE SUMMARY ===")
+    print(
+        f"Examples passed: "
+        f"{passed_examples}/{len(examples)}"
+    )
+
+    print(
+        f"Example accuracy: "
+        f"{example_accuracy * 100:.1f}%"
+    )
+
+    print(
+        f"Assistant steps passed: "
+        f"{passed_steps}/{total_steps}"
+    )
+
+    print(
+        f"Step accuracy: "
+        f"{step_accuracy * 100:.1f}%"
+    )
+
+    print()
+    print("Detailed results saved to:")
+    print(f"  {RESULTS_FILE}")
+
+
+if __name__ == "__main__":
+    main()

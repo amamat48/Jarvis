@@ -1,0 +1,198 @@
+[
+    {
+        "id": "conversation_01",
+        "category": "conversation",
+        "input": "Hello Jarvis.",
+        "expected_tools": [],
+        "forbidden_tools": [
+            "recall_memory",
+            "remember_memory",
+            "calculate"
+        ],
+        "goal": "Respond naturally without using a tool."
+    },
+    {
+        "id": "conversation_02",
+        "category": "conversation",
+        "input": "What are you able to help me with?",
+        "expected_tools": [],
+        "goal": "Answer normally without unnecessary tool calls."
+    },
+    {
+        "id": "calculator_01",
+        "category": "calculator",
+        "input": "What is 137 * 29?",
+        "expected_tools": [
+            "calculate"
+        ],
+        "goal": "Use the calculator with the correct expression."
+    },
+   {
+    "id": "calculator_02",
+    "category": "calculator",
+    "input": "Calculate 3180 / 15, then multiply that result by 7.",
+    "acceptable_tool_sequences": [
+        [
+            "calculate",
+            "calculate"
+        ],
+        [
+            "calculate"
+        ]
+    ],
+    "goal": "Perform the calculation correctly, either as sequential calculations or as one equivalent combined expression."
+},
+    {
+    "id": "calculator_02",
+    "category": "calculator",
+    "input": "Calculate 3180 / 15, then multiply that result by 7.",
+    "acceptable_tool_sequences": [
+        ["calculate", "calculate"],
+        ["calculate"]
+    ],
+    "goal": "Perform the calculation correctly, either as sequential calculations or as one equivalent combined expression."
+    },
+    {
+        "id": "memory_01",
+        "category": "memory",
+        "input": "What do you remember about me?",
+        "expected_tools": [
+            "recall_memory"
+        ],
+        "goal": "Call recall_memory with no arguments and accurately report its result."
+    },
+    {
+        "id": "memory_02",
+        "category": "memory",
+        "input": "Remember that my favorite programming language is C++.",
+        "expected_tools": [
+            "remember_memory"
+        ],
+        "goal": "Store only the information explicitly provided by the user."
+    },
+    {
+        "id": "memory_03",
+        "category": "memory",
+        "input": "Remember that my favorite programming language",
+        "expected_tools": [],
+        "forbidden_tools": [
+            "remember_memory"
+        ],
+        "goal": "Recognize that the memory request is incomplete and ask for clarification."
+    },
+    {
+        "id": "memory_04",
+        "category": "memory",
+        "input": "Hello Jarvis, how are you doing?",
+        "expected_tools": [],
+        "forbidden_tools": [
+            "remember_memory",
+            "recall_memory"
+        ],
+        "goal": "Do not use memory tools for casual conversation."
+    },
+    {
+        "id": "file_01",
+        "category": "file_reasoning",
+        "input": "Explain what debug_test.cpp does.",
+        "expected_tools": [
+            "read_file"
+        ],
+        "forbidden_tools": [
+            "run_python_file",
+            "debug_python_file"
+        ],
+        "goal": "Read the C++ source and explain it without incorrectly trying to execute it as Python."
+    },
+    {
+        "id": "file_02",
+        "category": "file_tools",
+        "input": "What files are in the JARVIS project?",
+        "expected_tools": [
+            "list_files"
+        ],
+        "goal": "Use the project file-listing tool."
+    },
+    {
+        "id": "file_03",
+        "category": "code_search",
+        "input": "Find where the JARVIS calculator tool is defined.",
+        "expected_tools": [
+            "search_files"
+        ],
+        "goal": "Search the project for the relevant definition before answering."
+    },
+    {
+    "id": "python_01",
+    "category": "execution",
+    "input": "Run model/evaluations/fixtures/benchmark_python.py and tell me what it outputs.",
+    "expected_tools": ["run_python_file"],
+    "goal": "Execute the benchmark Python file and accurately report its output."
+    },
+    {
+        "id": "python_02",
+        "category": "debugging",
+        "input": "Debug debug_test.py and tell me what is wrong.",
+        "expected_tools": [
+            "debug_python_file"
+        ],
+        "goal": "Inspect both source code and execution results before diagnosing the problem."
+    },
+    {
+        "id": "cpp_01",
+        "category": "cpp",
+        "input": "Read debug_test.cpp and explain the logic line by line.",
+        "expected_tools": [
+            "read_file"
+        ],
+        "forbidden_tools": [
+            "run_python_file",
+            "debug_python_file"
+        ],
+        "goal": "Treat C++ as readable source code even though C++ execution is not currently implemented."
+    },
+    {
+        "id": "cpp_02",
+        "category": "cpp",
+        "input": "Compile and run debug_test.cpp.",
+        "expected_tools": [],
+        "forbidden_tools": [
+            "run_python_file",
+            "debug_python_file"
+        ],
+        "goal": "Do not pretend JARVIS currently has a C++ execution tool."
+    },
+{
+  "id": "agent_01",
+  "category": "multi_step_agent",
+  "input": "Find the calculator function in the project, read the file containing it, and explain how it works.",
+  "acceptable_tool_sequences": [
+    ["search_files", "read_file"],
+    ["search_files", "search_files", "read_file"]
+  ],
+  "goal": "Find the calculator implementation, inspect the source file, and explain how it works. If the initial search fails, recover by using a more appropriate search query."
+},
+    {
+        "id": "agent_02",
+        "category": "tool_discipline",
+        "input": "Tell me a joke about engineering.",
+        "expected_tools": [],
+        "goal": "Recognize that no tool is necessary."
+    },
+    {
+        "id": "agent_03",
+        "category": "tool_discipline",
+        "input": "What is the capital of Ohio?",
+        "expected_tools": [],
+        "goal": "Answer from the model's knowledge without unnecessary tool use."
+    },
+    {
+        "id": "memory_05",
+        "category": "memory",
+        "input": "What do you remember about me? Only tell me information that is actually stored in persistent memory.",
+        "expected_tools": [
+            "recall_memory"
+        ],
+        "goal": "Treat the recall_memory result as authoritative and do not invent additional memories."
+    }
+]

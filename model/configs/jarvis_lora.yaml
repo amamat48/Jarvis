@@ -1,0 +1,257 @@
+# ============================================================
+# JARVIS QLoRA Training Configuration
+# Base model:
+#   Qwen3-4B-Instruct-2507-4bit
+#
+# This configuration is intentionally conservative because
+# the target machine is an M2 MacBook Air with 8 GB of
+# unified memory.
+#
+# The goal of the first real experiment is NOT to maximize
+# model quality immediately. Instead, we want to establish
+# a stable training configuration that:
+#
+#   1. Fits comfortably in memory.
+#   2. Trains the intended JARVIS behavior.
+#   3. Produces measurable validation loss.
+#   4. Produces an adapter we can evaluate against the
+#      untouched Qwen3 baseline.
+# ============================================================
+
+# ------------------------------------------------------------
+# MODEL
+# ------------------------------------------------------------
+
+# This is the 4-bit MLX community checkpoint of the Qwen3
+# 4B instruction model.
+#
+# Because this model is quantized, mlx-lm will use QLoRA
+# rather than standard full-precision LoRA.
+model: "mlx-community/Qwen3-4B-Instruct-2507-4bit"
+
+
+# ------------------------------------------------------------
+# TRAINING MODE
+# ------------------------------------------------------------
+
+# Tell mlx-lm that this invocation should perform training.
+train: true
+
+# QLoRA/LoRA rather than full model fine-tuning.
+#
+# "full" would attempt to update the actual base-model
+# weights and is not appropriate for our 8 GB machine.
+fine_tune_type: lora
+
+
+# ------------------------------------------------------------
+# DATASET
+# ------------------------------------------------------------
+
+# This directory contains:
+#
+#   train.jsonl
+#   valid.jsonl
+#   test.jsonl
+#
+# The files were generated from our cleaned 145-example
+# JARVIS behavior corpus.
+data: "model/training_data/v3/mlx"
+
+
+# ------------------------------------------------------------
+# OPTIMIZER
+# ------------------------------------------------------------
+
+# AdamW is a commonly used optimizer for LoRA fine-tuning.
+# We are using it rather than the default Adam configuration.
+optimizer: adamw
+
+
+# ------------------------------------------------------------
+# RANDOM SEED
+# ------------------------------------------------------------
+
+# Keeping the seed fixed makes experiments reproducible.
+#
+# If we later compare two training configurations, using
+# the same seed reduces one source of experimental variation.
+seed: 42
+
+
+# ------------------------------------------------------------
+# LORA MODEL SCOPE
+# ------------------------------------------------------------
+
+# Fine-tune the final 4 transformer layers.
+#
+# Our earlier 1-layer smoke test used:
+#
+#   trainable parameters: 0.459M
+#   peak memory:          3.053 GB
+#
+# Four layers should give the adapter more capacity while
+# still being substantially more memory-efficient than the
+# default 16-layer configuration.
+#
+# MLX-LM documents reducing num_layers as a memory-saving
+# technique when hardware is constrained.
+num_layers: 4
+
+
+# ------------------------------------------------------------
+# BATCHING
+# ------------------------------------------------------------
+
+# A batch size of 1 minimizes peak memory consumption.
+batch_size: 1
+
+# We are deliberately leaving gradient accumulation at 1
+# for this first experiment.
+#
+# Later, we can increase this to improve the effective batch
+# size without increasing the number of examples held in
+# memory simultaneously.
+grad_accumulation_steps: 1
+
+
+# ------------------------------------------------------------
+# TRAINING LENGTH
+# ------------------------------------------------------------
+
+# Our training split contains 113 examples.
+#
+# With batch_size=1, roughly 113 iterations represents one
+# pass through the training examples, although the exact
+# relationship depends on the data-loader behavior.
+#
+# We will start with 120 iterations. That is approximately
+# one pass through the dataset plus a small amount of
+# additional exposure.
+#
+# We are deliberately NOT starting at 1000 iterations.
+# With only 113 training examples, an excessively long run
+# could encourage the adapter to memorize the corpus.
+iters: 120
+
+
+# ------------------------------------------------------------
+# VALIDATION
+# ------------------------------------------------------------
+
+# Evaluate frequently enough to see whether the model is
+# learning or beginning to overfit.
+steps_per_eval: 20
+
+# Use the complete validation set for each evaluation.
+#
+# Our validation split only contains 16 examples, so evaluating
+# all of them is inexpensive and gives us a more stable signal
+# than checking only one or two examples.
+val_batches: -1
+
+
+# ------------------------------------------------------------
+# LOSS REPORTING
+# ------------------------------------------------------------
+
+# Print training information every 10 iterations.
+steps_per_report: 10
+
+
+# ------------------------------------------------------------
+# LEARNING RATE
+# ------------------------------------------------------------
+
+# This is intentionally conservative.
+#
+# For a small, behavior-focused dataset, we don't want the
+# adapter making extremely large updates that could damage
+# the base model's general instruction-following behavior.
+learning_rate: 1.0e-5
+
+
+# ------------------------------------------------------------
+# SEQUENCE LENGTH
+# ------------------------------------------------------------
+
+# Our token analysis found:
+#
+#   longest example = 650 tokens
+#
+# Therefore 768 gives every current example enough room while
+# avoiding the unnecessary memory cost of 1024 or 2048 tokens.
+max_seq_length: 1024
+
+
+# ------------------------------------------------------------
+# MEMORY OPTIMIZATION
+# ------------------------------------------------------------
+
+# Gradient checkpointing reduces memory usage by recomputing
+# intermediate activations during the backward pass instead
+# of retaining all of them.
+#
+# The trade-off is additional computation time, but memory is
+# the more important constraint on an 8 GB laptop.
+grad_checkpoint: true
+
+
+# ------------------------------------------------------------
+# ADAPTER OUTPUT
+# ------------------------------------------------------------
+
+# Keep the first real experiment separate from our previous
+# 1-layer smoke-test adapter.
+adapter_path: "model/evaluations/jarvis_lora_v3"
+
+
+# Save checkpoints periodically so that an interrupted run
+# doesn't necessarily require starting over.
+save_every: 40
+
+
+# ------------------------------------------------------------
+# TESTING
+# ------------------------------------------------------------
+
+# Do not automatically run the test set during this first
+# training invocation.
+#
+# We will evaluate the test set separately after inspecting
+# the training/validation behavior so that the test set
+# remains a cleaner measure of generalization.
+test: false
+
+
+# ------------------------------------------------------------
+# LORA PARAMETERS
+# ------------------------------------------------------------
+
+lora_parameters:
+
+  # Rank controls the dimensionality/capacity of the LoRA
+  # adaptation matrices.
+  #
+  # Rank 8 is a relatively small adapter and is appropriate
+  # for this first experiment.
+  rank: 8
+
+  # Scale controls how strongly the LoRA update contributes
+  # relative to the underlying model weights.
+  scale: 20.0
+
+  # Dropout is disabled for this initial experiment.
+  #
+  # If later experiments show clear overfitting, dropout can
+  # become one of the variables we investigate.
+  dropout: 0.0
+
+  # These are the attention projections we will adapt.
+  #
+  # Restricting LoRA to q_proj and v_proj keeps the number of
+  # trainable parameters relatively small while targeting
+  # important parts of the transformer's attention mechanism.
+  keys:
+    - "self_attn.q_proj"
+    - "self_attn.v_proj"

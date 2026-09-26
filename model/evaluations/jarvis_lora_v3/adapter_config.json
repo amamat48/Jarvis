@@ -1,0 +1,45 @@
+{
+    "adapter_path": "model/evaluations/jarvis_lora_v3",
+    "batch_size": 1,
+    "clear_cache_threshold": 0,
+    "config": "model/configs/jarvis_lora.yaml",
+    "data": "model/training_data/v3/mlx",
+    "fine_tune_type": "lora",
+    "grad_accumulation_steps": 1,
+    "grad_checkpoint": true,
+    "iters": 120,
+    "learning_rate": 1e-05,
+    "lora_parameters": {
+        "rank": 8,
+        "scale": 20.0,
+        "dropout": 0.0,
+        "keys": [
+            "self_attn.q_proj",
+            "self_attn.v_proj"
+        ]
+    },
+    "lr_schedule": null,
+    "mask_prompt": false,
+    "max_seq_length": 1024,
+    "model": "mlx-community/Qwen3-4B-Instruct-2507-4bit",
+    "num_layers": 4,
+    "optimizer": "adamw",
+    "optimizer_config": {
+        "adam": {},
+        "adamw": {},
+        "muon": {},
+        "sgd": {},
+        "adafactor": {}
+    },
+    "project_name": null,
+    "report_to": null,
+    "resume_adapter_file": null,
+    "save_every": 40,
+    "seed": 42,
+    "steps_per_eval": 20,
+    "steps_per_report": 10,
+    "test": false,
+    "test_batches": 500,
+    "train": true,
+    "val_batches": -1
+}
