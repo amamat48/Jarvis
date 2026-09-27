@@ -24,13 +24,23 @@ if str(PROJECT_ROOT) not in sys.path:
 
 MODEL_NAME = "mistralai/Ministral-3-8B-Reasoning-2512"
 
+# ============================================================
+# V5 ADAPTER
+# ============================================================
+
 ADAPTER_PATH = (
     PROJECT_ROOT
     / "model"
     / "evaluations"
-    / "jarvis_lora_v4"
-    / "checkpoint-160"
+    / "jarvis_lora_v5"
+    / "final"
 )
+
+# ============================================================
+# FIXED EVALUATION SET
+#
+# DO NOT MODIFY THIS FILE.
+# ============================================================
 
 EVAL_FILE = (
     PROJECT_ROOT
@@ -39,11 +49,15 @@ EVAL_FILE = (
     / "jarvis_eval_32.jsonl"
 )
 
+# ============================================================
+# V5 RESULTS
+# ============================================================
+
 RESULTS_FILE = (
     PROJECT_ROOT
     / "model"
     / "evaluations"
-    / "mistral_v4_results.json"
+    / "mistral_v5_results.json"
 )
 
 
@@ -95,17 +109,40 @@ def load_evaluation_data():
 
 # ============================================================
 # MESSAGE NORMALIZATION
+#
+# IMPORTANT:
+#
+# Tool-call IDs are normalized consistently across the entire
+# conversation.
+#
+# This prevents evaluator failures where an assistant tool call
+# has one ID while its corresponding tool result references a
+# different ID.
+#
+# These are evaluator-internal IDs only. They do not change the
+# fixed evaluation cases.
 # ============================================================
 
 def normalize_messages(messages):
     normalized = []
-    pending_call_ids = []
-    seen_call_ids = set()
+
+    # Maps original tool-call IDs to queues of normalized IDs.
+    #
+    # A queue is used because multiple calls can theoretically
+    # reuse the same source ID in malformed/historical data.
+    pending_by_original_id = {}
+
+    # Ordered list of currently unmatched normalized calls.
+    pending_normalized_ids = []
 
     for message_index, original_message in enumerate(messages):
         message = copy.deepcopy(original_message)
 
         role = message.get("role")
+
+        # --------------------------------------------------------
+        # ASSISTANT TOOL CALL
+        # --------------------------------------------------------
 
         if role == "assistant":
             tool_calls = message.get("tool_calls") or []
@@ -113,35 +150,40 @@ def normalize_messages(messages):
             if tool_calls:
                 normalized_tool_calls = []
 
-                for call_index, tool_call in enumerate(tool_calls):
-                    tool_call = dict(tool_call)
+                for call_index, original_tool_call in enumerate(
+                    tool_calls
+                ):
+                    tool_call = dict(original_tool_call)
 
-                    if not tool_call.get("id"):
-                        tool_call["id"] = (
-                            f"eval_call_{message_index}_{call_index}"
-                        )
+                    original_id = tool_call.get("id")
 
-                    call_id = tool_call["id"]
+                    # Every tool call gets a deterministic internal ID.
+                    normalized_id = (
+                        f"eval_call_{message_index}_{call_index}"
+                    )
 
-                    if not isinstance(call_id, str) or not call_id:
-                        raise ValueError(
-                            "Tool-call IDs must be non-empty strings."
-                        )
+                    # Record mapping from original ID to normalized ID.
+                    if original_id:
+                        pending_by_original_id.setdefault(
+                            original_id,
+                            [],
+                        ).append(normalized_id)
 
-                    if call_id in seen_call_ids:
-                        raise ValueError(
-                            f"Duplicate tool-call id: {call_id}"
-                        )
+                    pending_normalized_ids.append(
+                        normalized_id
+                    )
 
-                    seen_call_ids.add(call_id)
-                    pending_call_ids.append(call_id)
+                    tool_call["id"] = normalized_id
 
                     function = tool_call.get("function")
 
                     if function:
                         function = dict(function)
 
-                        arguments = function.get("arguments", {})
+                        arguments = function.get(
+                            "arguments",
+                            {},
+                        )
 
                         if not isinstance(arguments, str):
                             arguments = json.dumps(
@@ -152,32 +194,60 @@ def normalize_messages(messages):
                         function["arguments"] = arguments
                         tool_call["function"] = function
 
-                    normalized_tool_calls.append(tool_call)
+                    normalized_tool_calls.append(
+                        tool_call
+                    )
 
                 message["tool_calls"] = normalized_tool_calls
 
+        # --------------------------------------------------------
+        # TOOL RESULT
+        # --------------------------------------------------------
+
         elif role == "tool":
-            tool_call_id = message.get("tool_call_id")
+            original_tool_call_id = message.get(
+                "tool_call_id"
+            )
 
-            if not tool_call_id:
-                if not pending_call_ids:
-                    raise ValueError(
-                        "Tool result has no preceding unmatched tool call."
-                    )
+            normalized_tool_call_id = None
 
-                tool_call_id = pending_call_ids[0]
-                message["tool_call_id"] = tool_call_id
-
-            if not isinstance(tool_call_id, str):
-                raise ValueError("Tool-result IDs must be non-empty strings.")
-
-            if tool_call_id not in pending_call_ids:
-                raise ValueError(
-                    "Tool result references an unknown or already matched "
-                    f"tool-call id: {tool_call_id}"
+            # If the result provides an original ID, map it to the
+            # corresponding normalized call ID.
+            if original_tool_call_id:
+                mapped_ids = pending_by_original_id.get(
+                    original_tool_call_id
                 )
 
-            pending_call_ids.remove(tool_call_id)
+                if mapped_ids:
+                    normalized_tool_call_id = mapped_ids.pop(0)
+
+                    if not mapped_ids:
+                        del pending_by_original_id[
+                            original_tool_call_id
+                        ]
+
+            # If the original ID was absent or could not be mapped,
+            # use the oldest unmatched call.
+            if normalized_tool_call_id is None:
+                if not pending_normalized_ids:
+                    raise ValueError(
+                        "Tool result has no preceding unmatched "
+                        "tool call."
+                    )
+
+                normalized_tool_call_id = (
+                    pending_normalized_ids[0]
+                )
+
+            # Remove the normalized ID from the unmatched queue.
+            if normalized_tool_call_id in pending_normalized_ids:
+                pending_normalized_ids.remove(
+                    normalized_tool_call_id
+                )
+
+            message["tool_call_id"] = (
+                normalized_tool_call_id
+            )
 
             if message.get("content") is None:
                 message["content"] = ""
@@ -190,10 +260,14 @@ def normalize_messages(messages):
 
         normalized.append(message)
 
-    if pending_call_ids:
+    # --------------------------------------------------------
+    # Check for unmatched tool calls.
+    # --------------------------------------------------------
+
+    if pending_normalized_ids:
         raise ValueError(
             "Assistant tool calls have no matching tool results: "
-            + ", ".join(pending_call_ids)
+            + ", ".join(pending_normalized_ids)
         )
 
     return normalized
@@ -362,7 +436,10 @@ def extract_expected_tool_calls(messages):
             continue
 
         for tool_call in tool_calls:
-            function = tool_call.get("function", {})
+            function = tool_call.get(
+                "function",
+                {},
+            )
 
             name = function.get("name")
 
@@ -370,7 +447,10 @@ def extract_expected_tool_calls(messages):
                 continue
 
             arguments = parse_arguments(
-                function.get("arguments", {})
+                function.get(
+                    "arguments",
+                    {},
+                )
             )
 
             if arguments is None:
@@ -392,7 +472,10 @@ def extract_expected_tool_calls(messages):
 # Did the model correctly decide whether a tool was needed?
 # ============================================================
 
-def tool_decision_matches(expected_calls, predicted_calls):
+def tool_decision_matches(
+    expected_calls,
+    predicted_calls,
+):
     expected_has_tools = len(expected_calls) > 0
     predicted_has_tools = len(predicted_calls) > 0
 
@@ -406,7 +489,10 @@ def tool_decision_matches(expected_calls, predicted_calls):
 # Arguments are intentionally ignored here.
 # ============================================================
 
-def tool_selection_matches(expected_calls, predicted_calls):
+def tool_selection_matches(
+    expected_calls,
+    predicted_calls,
+):
     expected_names = [
         call["name"]
         for call in expected_calls
@@ -426,7 +512,10 @@ def tool_selection_matches(expected_calls, predicted_calls):
 # Exact tool names + exact argument dictionaries.
 # ============================================================
 
-def arguments_match(expected_calls, predicted_calls):
+def arguments_match(
+    expected_calls,
+    predicted_calls,
+):
     if len(expected_calls) != len(predicted_calls):
         return False
 
@@ -447,7 +536,7 @@ def arguments_match(expected_calls, predicted_calls):
 
 
 # ============================================================
-# LOAD BASE MODEL + V4 LORA
+# LOAD BASE MODEL + V5 LORA
 # ============================================================
 
 def load_model():
@@ -456,8 +545,12 @@ def load_model():
 
     if not ADAPTER_PATH.exists():
         raise FileNotFoundError(
-            f"V4 adapter checkpoint not found:\n{ADAPTER_PATH}"
+            f"V5 adapter not found:\n{ADAPTER_PATH}"
         )
+
+    print()
+    print("V5 adapter verified:")
+    print(ADAPTER_PATH.resolve())
 
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -474,7 +567,7 @@ def load_model():
         tie_word_embeddings=False,
     )
 
-    print("Loading V4 LoRA adapter...")
+    print("Loading V5 LoRA adapter...")
 
     model = PeftModel.from_pretrained(
         model,
@@ -490,12 +583,19 @@ def load_model():
 # GENERATION
 # ============================================================
 
-def generate_response(model, backend, messages):
-    normalized_messages = normalize_messages(messages)
+def generate_response(
+    model,
+    backend,
+    messages,
+):
+    normalized_messages = normalize_messages(
+        messages
+    )
 
     if not normalized_messages:
         raise ValueError(
-            "Evaluation example contains an empty message list."
+            "Evaluation context contains an empty "
+            "message list."
         )
 
     encoded = backend.apply_chat_template(
@@ -544,26 +644,43 @@ def generate_response(model, backend, messages):
 
 def main():
     print("=" * 70)
-    print("JARVIS MISTRAL V4 EVALUATION")
+    print("JARVIS MISTRAL V5 EVALUATION")
     print("=" * 70)
 
     print()
     print(f"Model:       {MODEL_NAME}")
-    print(f"Adapter:     {ADAPTER_PATH}")
-    print(f"Evaluation:  {EVAL_FILE}")
-    print(f"Results:     {RESULTS_FILE}")
+    print(f"Adapter:     {ADAPTER_PATH.resolve()}")
+    print(f"Evaluation:  {EVAL_FILE.resolve()}")
+    print(f"Results:     {RESULTS_FILE.resolve()}")
+
+    # --------------------------------------------------------
+    # Safety checks
+    # --------------------------------------------------------
+
+    if not ADAPTER_PATH.exists():
+        raise FileNotFoundError(
+            "V5 adapter does not exist:\n"
+            f"{ADAPTER_PATH.resolve()}"
+        )
+
+    if not EVAL_FILE.exists():
+        raise FileNotFoundError(
+            "Fixed evaluation file does not exist:\n"
+            f"{EVAL_FILE.resolve()}"
+        )
 
     # --------------------------------------------------------
     # Load evaluation data
     # --------------------------------------------------------
 
     print()
-    print("Loading evaluation data...")
+    print("Loading fixed evaluation data...")
 
     evaluation_data = load_evaluation_data()
 
     print(
-        f"Loaded {len(evaluation_data)} evaluation examples."
+        f"Loaded {len(evaluation_data)} "
+        "evaluation examples."
     )
 
     # --------------------------------------------------------
@@ -573,12 +690,7 @@ def main():
     model = load_model()
 
     # --------------------------------------------------------
-    # IMPORTANT:
-    #
-    # The tokenizer is NOT stored on the PEFT model.
-    #
-    # MistralCommonBackend is itself the tokenizer/backend and
-    # must be loaded independently from the model.
+    # Load tokenizer/backend
     # --------------------------------------------------------
 
     print()
@@ -592,9 +704,23 @@ def main():
 
     # --------------------------------------------------------
     # Evaluation counters
+    #
+    # total_assistant_steps:
+    #     Every assistant decision encountered.
+    #
+    # successful_steps:
+    #     Steps where the evaluator successfully generated
+    #     and parsed a model response.
+    #
+    # evaluator_errors:
+    #     Runtime/protocol/template errors in the evaluator.
+    #
+    # Metrics are calculated ONLY from successful steps.
     # --------------------------------------------------------
 
     total_assistant_steps = 0
+    successful_steps = 0
+    evaluator_errors = 0
 
     tool_decision_correct = 0
     tool_selection_correct = 0
@@ -620,15 +746,21 @@ def main():
 
         if not isinstance(messages, list):
             print(
-                "  WARNING: example has no valid messages list."
+                "  WARNING: example has no valid "
+                "messages list."
             )
 
             detailed_results.append(
                 {
                     "example_index": example_index,
-                    "error": "Missing or invalid messages list.",
+                    "error_type": "evaluator_error",
+                    "error": (
+                        "Missing or invalid messages list."
+                    ),
                 }
             )
+
+            evaluator_errors += 1
 
             continue
 
@@ -638,10 +770,10 @@ def main():
         }
 
         # ----------------------------------------------------
-        # Evaluate each expected assistant tool-decision step.
+        # Evaluate each expected assistant decision step.
         #
-        # The evaluation context is everything before the
-        # assistant message being evaluated.
+        # The context is everything before the assistant
+        # message currently being evaluated.
         # ----------------------------------------------------
 
         for message_index, message in enumerate(messages):
@@ -689,6 +821,8 @@ def main():
                     predicted_calls,
                 )
 
+                successful_steps += 1
+
                 if decision_match:
                     tool_decision_correct += 1
 
@@ -699,13 +833,17 @@ def main():
                     argument_correct += 1
 
                 print(
-                    f"decision={'PASS' if decision_match else 'FAIL'} "
-                    f"selection={'PASS' if selection_match else 'FAIL'} "
-                    f"arguments={'PASS' if argument_match else 'FAIL'}"
+                    f"decision="
+                    f"{'PASS' if decision_match else 'FAIL'} "
+                    f"selection="
+                    f"{'PASS' if selection_match else 'FAIL'} "
+                    f"arguments="
+                    f"{'PASS' if argument_match else 'FAIL'}"
                 )
 
                 step_result = {
                     "message_index": message_index,
+                    "status": "evaluated",
                     "expected_tool_calls": expected_calls,
                     "predicted_tool_calls": predicted_calls,
                     "raw_response": raw_response,
@@ -715,16 +853,19 @@ def main():
                 }
 
             except Exception as exc:
-                print("ERROR")
+                evaluator_errors += 1
+
+                print("EVALUATOR ERROR")
 
                 step_result = {
                     "message_index": message_index,
+                    "status": "evaluator_error",
                     "expected_tool_calls": expected_calls,
                     "predicted_tool_calls": [],
                     "raw_response": None,
-                    "tool_decision_match": False,
-                    "tool_selection_match": False,
-                    "argument_match": False,
+                    "tool_decision_match": None,
+                    "tool_selection_match": None,
+                    "argument_match": None,
                     "error": str(exc),
                 }
 
@@ -732,26 +873,33 @@ def main():
                 step_result
             )
 
-        detailed_results.append(example_result)
+        detailed_results.append(
+            example_result
+        )
 
     # --------------------------------------------------------
     # Calculate metrics
+    #
+    # IMPORTANT:
+    #
+    # Evaluator errors are excluded from the behavioral
+    # denominator.
     # --------------------------------------------------------
 
-    if total_assistant_steps > 0:
+    if successful_steps > 0:
         tool_decision_accuracy = (
             tool_decision_correct
-            / total_assistant_steps
+            / successful_steps
         )
 
         tool_selection_accuracy = (
             tool_selection_correct
-            / total_assistant_steps
+            / successful_steps
         )
 
         argument_accuracy = (
             argument_correct
-            / total_assistant_steps
+            / successful_steps
         )
     else:
         tool_decision_accuracy = 0.0
@@ -764,19 +912,45 @@ def main():
 
     results = {
         "model": MODEL_NAME,
-        "adapter": str(ADAPTER_PATH),
-        "evaluation_file": str(EVAL_FILE),
-        "total_examples": len(evaluation_data),
-        "total_assistant_steps": total_assistant_steps,
+        "adapter": str(
+            ADAPTER_PATH.resolve()
+        ),
+        "evaluation_file": str(
+            EVAL_FILE.resolve()
+        ),
+        "total_examples": len(
+            evaluation_data
+        ),
+        "total_assistant_steps": (
+            total_assistant_steps
+        ),
+        "successful_evaluation_steps": (
+            successful_steps
+        ),
+        "evaluator_errors": (
+            evaluator_errors
+        ),
         "metrics": {
-            "tool_decision_accuracy": tool_decision_accuracy,
-            "tool_selection_accuracy": tool_selection_accuracy,
-            "argument_accuracy": argument_accuracy,
+            "tool_decision_accuracy": (
+                tool_decision_accuracy
+            ),
+            "tool_selection_accuracy": (
+                tool_selection_accuracy
+            ),
+            "argument_accuracy": (
+                argument_accuracy
+            ),
         },
         "counts": {
-            "tool_decision_correct": tool_decision_correct,
-            "tool_selection_correct": tool_selection_correct,
-            "argument_correct": argument_correct,
+            "tool_decision_correct": (
+                tool_decision_correct
+            ),
+            "tool_selection_correct": (
+                tool_selection_correct
+            ),
+            "argument_correct": (
+                argument_correct
+            ),
         },
         "examples": detailed_results,
     }
@@ -807,48 +981,90 @@ def main():
 
     print()
     print("=" * 70)
-    print("EVALUATION COMPLETE")
+    print("V5 EVALUATION COMPLETE")
     print("=" * 70)
 
     print()
     print(
-        f"Examples:               {len(evaluation_data)}"
+        f"Examples:                  "
+        f"{len(evaluation_data)}"
     )
 
     print(
-        f"Assistant steps:        {total_assistant_steps}"
+        f"Assistant steps:           "
+        f"{total_assistant_steps}"
     )
 
     print(
-        f"Tool decision accuracy: "
+        f"Successfully evaluated:    "
+        f"{successful_steps}"
+    )
+
+    print(
+        f"Evaluator errors:          "
+        f"{evaluator_errors}"
+    )
+
+    print()
+
+    print(
+        f"Tool decision accuracy:    "
         f"{tool_decision_accuracy:.2%}"
     )
 
     print(
-        f"Tool selection accuracy:"
-        f" {tool_selection_accuracy:.2%}"
+        f"Tool selection accuracy:   "
+        f"{tool_selection_accuracy:.2%}"
     )
 
     print(
-        f"Argument accuracy:      "
+        f"Argument accuracy:         "
         f"{argument_accuracy:.2%}"
     )
 
     print()
+
     print(
-        f"Results written to:\n{RESULTS_FILE}"
+        "V5 adapter evaluated:"
+    )
+
+    print(
+        ADAPTER_PATH.resolve()
+    )
+
+    print()
+
+    print(
+        "Fixed evaluation set:"
+    )
+
+    print(
+        EVAL_FILE.resolve()
+    )
+
+    print()
+
+    print(
+        f"Results written to:\n"
+        f"{RESULTS_FILE.resolve()}"
     )
 
     print("=" * 70)
 
 
+# ============================================================
+# ENTRY POINT
+# ============================================================
+
 if __name__ == "__main__":
     try:
         main()
+
     except KeyboardInterrupt:
         print()
         print("Evaluation interrupted by user.")
         sys.exit(1)
+
     except Exception as exc:
         print()
         print("=" * 70)

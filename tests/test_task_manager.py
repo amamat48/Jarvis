@@ -6,8 +6,22 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from tasks.manager import TaskExecutionRequest, TaskManager
-from tasks.models import ResyncRequired, TaskCommand, TaskState
-from tools.security import SecurityGate, TaskContext
+from tasks.models import (
+    ApprovalRequest,
+    ResyncRequired,
+    Task,
+    TaskCommand,
+    TaskEvent,
+    TaskState,
+)
+from tasks.views import project_event, project_task
+from tools.security import (
+    AuthorizedOperation,
+    AuthorizationError,
+    SecurityGate,
+    TaskContext,
+    ToolSecurity,
+)
 
 
 def wait_for(predicate, timeout=3.0):
@@ -444,6 +458,369 @@ class TaskManagerTests(unittest.TestCase):
         result = subscription.get(timeout=1)
         self.assertIsInstance(result, ResyncRequired)
         release.set()
+
+
+    def test_slow_authorized_tool_does_not_block_manager_or_snapshot_events(self):
+        tool_entered = threading.Event()
+        release_tool = threading.Event()
+        snapshot_read = threading.Event()
+        event_read = threading.Event()
+        snapshot_result = {}
+        tool_calls = []
+
+        def slow_calculate(expression):
+            tool_entered.set()
+            if not release_tool.wait(3):
+                raise TimeoutError("test tool was not released")
+            tool_calls.append(expression)
+            return "2"
+
+        def executor(request, hooks):
+            context = hooks.task_context()
+            operation, _ = hooks.security_gate.propose(
+                context, "calculate", {"expression": "1 + 1"}
+            )
+            authorized = hooks.security_gate.authorize(context, operation)
+            hooks.tool_started("calculate")
+            try:
+                return hooks.execute_authorized(authorized)
+            finally:
+                hooks.tool_finished("calculate")
+
+        gate = SecurityGate()
+        subscription = None
+        manager = None
+        consumer = None
+        snapshot_reader = None
+        try:
+            with patch.dict(
+                "tools.security.TOOL_SECURITY",
+                {"calculate": ToolSecurity("calculate", "low")},
+            ), patch.dict("tools.registry.TOOLS", {"calculate": slow_calculate}):
+                manager = TaskManager(
+                    executor=executor,
+                    system_prompt="system",
+                    security_gate=gate,
+                )
+                subscription = manager.subscribe(0, manager.manager_epoch)
+                queued = manager.submit_message("calculate 1 + 1")
+                self.assertTrue(tool_entered.wait(1), "authorized tool did not start")
+
+                def read_snapshot():
+                    snapshot_result["snapshot"] = manager.get_snapshot()
+                    snapshot_read.set()
+
+                def read_tool_event():
+                    while True:
+                        event = subscription.get(timeout=2)
+                        if event is None:
+                            return
+                        if event.event_type == "tool_started":
+                            event_read.set()
+                            return
+
+                snapshot_reader = threading.Thread(target=read_snapshot, daemon=True)
+                consumer = threading.Thread(target=read_tool_event, daemon=True)
+                snapshot_reader.start()
+                consumer.start()
+
+                self.assertTrue(
+                    snapshot_read.wait(1),
+                    "snapshot waited for the blocked authorized tool",
+                )
+                self.assertTrue(
+                    event_read.wait(1),
+                    "event consumer waited for the blocked authorized tool",
+                )
+                self.assertEqual(
+                    snapshot_result["snapshot"].active_task_id,
+                    queued.task_id,
+                )
+                self.assertTrue(manager.focus_task(queued.task_id).accepted)
+        finally:
+            release_tool.set()
+            if consumer is not None:
+                consumer.join(1)
+            if snapshot_reader is not None:
+                snapshot_reader.join(1)
+            if subscription is not None:
+                subscription.close()
+            if manager is not None:
+                manager.close(wait=True)
+
+        self.assertEqual(tool_calls, ["1 + 1"])
+
+    def test_consumed_authorized_operation_cannot_be_reused(self):
+        calls = []
+
+        def executor(request, hooks):
+            context = hooks.task_context()
+            operation, _ = hooks.security_gate.propose(
+                context, "calculate", {"expression": "7"}
+            )
+            authorized = hooks.security_gate.authorize(context, operation)
+            first = hooks.execute_authorized(authorized)
+            second = hooks.execute_authorized(authorized)
+            return f"{first}; {second}"
+
+        with patch.dict(
+            "tools.security.TOOL_SECURITY",
+            {"calculate": ToolSecurity("calculate", "low")},
+        ), patch.dict(
+            "tools.registry.TOOLS",
+            {"calculate": lambda expression: calls.append(expression) or expression},
+        ):
+            manager = self.make_manager(executor, security_gate=SecurityGate())
+            result = manager.submit_message("calculate 7")
+            self.assertTrue(
+                wait_for(
+                    lambda: manager.get_task(result.task_id).state
+                    == TaskState.COMPLETED
+                )
+            )
+
+        self.assertEqual(calls, ["7"])
+        self.assertIn("Execution denied", manager.get_task(result.task_id).result)
+
+    def test_approval_proposal_failure_fails_task_and_invalidates_gate_record(self):
+        class FailAfterProposeGate(SecurityGate):
+            def __init__(self):
+                super().__init__()
+                self.fail_once = True
+                self.failed_operation = None
+                self.failed_context = None
+
+            def propose(self, context, tool_name, arguments):
+                operation, decision = super().propose(context, tool_name, arguments)
+                if self.fail_once:
+                    self.fail_once = False
+                    self.failed_operation = operation
+                    self.failed_context = context
+                    raise RuntimeError("deliberate proposal failure")
+                return operation, decision
+
+        gate = FailAfterProposeGate()
+
+        def executor(request, hooks):
+            if request.user_message == "cause approval failure":
+                hooks.request_approval(
+                    "calculate", {"expression": "1 + 1"}, "call-approval-failure"
+                )
+            return "manager remains usable"
+
+        with patch.dict(
+            "tools.security.TOOL_SECURITY",
+            {"calculate": ToolSecurity("calculate", "high", human_approval=True)},
+        ):
+            manager = self.make_manager(executor, security_gate=gate)
+            start = manager.get_snapshot()
+            subscription = manager.subscribe(start.last_sequence, start.manager_epoch)
+            self.addCleanup(subscription.close)
+
+            failed = manager.submit_message("cause approval failure")
+            failure_event = None
+            while failure_event is None:
+                event = subscription.get(timeout=2)
+                self.assertIsNotNone(event, "task failure event was not published")
+                if (
+                    event.event_type == "task_finished"
+                    and event.task_id == failed.task_id
+                ):
+                    failure_event = event
+
+            failed_task = manager.get_task(failed.task_id)
+            self.assertEqual(failed_task.state, TaskState.FAILED)
+            self.assertIsNone(failed_task.pending_approval)
+            self.assertIsNone(manager._contexts[failed.task_id].pending_operation)
+            self.assertEqual(
+                failed_task.result,
+                "Approval could not be prepared. No action was executed.",
+            )
+            self.assertEqual(failure_event.payload["state"], TaskState.FAILED.value)
+            self.assertEqual(failure_event.payload["result"], failed_task.result)
+            with self.assertRaises(AuthorizationError):
+                gate.approve(gate.failed_context, gate.failed_operation)
+
+            followup = manager.submit_message("second task")
+            self.assertTrue(
+                wait_for(
+                    lambda: manager.get_task(followup.task_id).state
+                    == TaskState.COMPLETED
+                )
+            )
+            self.assertEqual(
+                manager.get_task(followup.task_id).result,
+                "manager remains usable",
+            )
+
+    def test_task_view_omits_internal_messages_prompts_and_authorization(self):
+        started = threading.Event()
+        release_executor = threading.Event()
+
+        def executor(request, hooks):
+            started.set()
+            release_executor.wait(2)
+            return "finished"
+
+        manager = TaskManager(
+            executor=executor,
+            system_prompt="PRIVATE_SYSTEM_PROMPT_SENTINEL",
+            security_gate=SecurityGate(),
+        )
+        try:
+            queued = manager.submit_message("A user-visible objective")
+            self.assertTrue(started.wait(1))
+            request = manager._contexts[queued.task_id]
+            request.messages.append(
+                {"role": "assistant", "content": "PRIVATE_HISTORY_SENTINEL"}
+            )
+            task = manager.get_task(queued.task_id)
+            request.approved_operation = AuthorizedOperation(
+                "private-operation-id",
+                queued.task_id,
+                task.revision,
+                "calculate",
+                {"expression": "PRIVATE_ARGUMENT_SENTINEL"},
+                "private-fingerprint",
+                "PRIVATE_AUTH_TOKEN_SENTINEL",
+            )
+
+            snapshot_view = manager.get_view_snapshot()
+            task_view = next(
+                item for item in snapshot_view.tasks if item.task_id == queued.task_id
+            )
+            rendered = repr(snapshot_view)
+            self.assertEqual(snapshot_view.active_task_id, queued.task_id)
+            self.assertEqual(
+                task_view.conversation_id,
+                manager.get_task(queued.task_id).conversation_id,
+            )
+            self.assertEqual(task_view.objective, "A user-visible objective")
+            self.assertEqual(task_view.state, TaskState.RUNNING.value)
+            self.assertGreater(task_view.revision, 0)
+            self.assertTrue(task_view.created_at)
+            self.assertEqual(task_view.statistics.tool_calls, 0)
+            self.assertFalse(hasattr(task_view, "messages"))
+            self.assertFalse(hasattr(task_view, "approved_operation"))
+            for private_value in (
+                "PRIVATE_SYSTEM_PROMPT_SENTINEL",
+                "PRIVATE_HISTORY_SENTINEL",
+                "PRIVATE_ARGUMENT_SENTINEL",
+                "PRIVATE_AUTH_TOKEN_SENTINEL",
+            ):
+                self.assertNotIn(private_value, rendered)
+        finally:
+            release_executor.set()
+            manager.close(wait=True)
+
+    def test_task_view_keeps_lifecycle_and_hides_approval_target(self):
+        task = Task(
+            task_id="task-id",
+            conversation_id="conversation-id",
+            state=TaskState.WAITING_FOR_APPROVAL,
+            revision=12,
+            objective="Review requested change",
+            current_activity="Checking delete_file",
+            plan=[],
+            pending_approval=ApprovalRequest(
+                "approval-id",
+                "delete_file (destructive) — C:\\Users\\private\\secret.txt",
+            ),
+        )
+
+        view = project_task(task)
+
+        self.assertEqual(view.task_id, "task-id")
+        self.assertEqual(view.state, TaskState.WAITING_FOR_APPROVAL.value)
+        self.assertEqual(view.revision, 12)
+        self.assertEqual(view.current_activity, "Reviewing a requested operation")
+        self.assertEqual(view.pending_approval.approval_id, "approval-id")
+        self.assertEqual(
+            view.pending_approval.summary,
+            "Sensitive operation requires approval.",
+        )
+        self.assertNotIn("secret.txt", repr(view))
+        self.assertNotIn("delete_file", repr(view))
+
+    def test_task_event_view_keeps_cursor_and_drops_arguments_and_tokens(self):
+        event = TaskEvent(
+            manager_epoch="manager-epoch",
+            sequence=42,
+            event_id="event-id",
+            timestamp="2026-09-27T00:00:00+00:00",
+            event_type="approval_requested",
+            task_id="task-id",
+            task_revision=9,
+            payload={
+                "approval_id": "approval-id",
+                "operation_id": "internal-operation-id",
+                "tool_name": "install_package",
+                "risk": "high",
+                "target": "C:\\Users\\private\\package.whl",
+                "summary": "raw operation summary",
+                "arguments": {"package": "PRIVATE_TOOL_ARGUMENT_SENTINEL"},
+                "authorization": {"token": "PRIVATE_TOKEN_SENTINEL"},
+            },
+        )
+
+        view = project_event(event)
+        rendered = repr(view)
+
+        self.assertEqual(view.manager_epoch, "manager-epoch")
+        self.assertEqual(view.sequence, 42)
+        self.assertEqual(view.event_id, "event-id")
+        self.assertEqual(view.task_id, "task-id")
+        self.assertEqual(view.task_revision, 9)
+        self.assertEqual(
+            view.payload["summary"],
+            "Sensitive operation requires approval.",
+        )
+        for private_value in (
+            "internal-operation-id",
+            "install_package",
+            "package.whl",
+            "PRIVATE_TOOL_ARGUMENT_SENTINEL",
+            "PRIVATE_TOKEN_SENTINEL",
+        ):
+            self.assertNotIn(private_value, rendered)
+
+    def test_expected_revision_can_reject_stale_state_command(self):
+        started = threading.Event()
+        release_first = threading.Event()
+
+        def executor(request, hooks):
+            if request.user_message == "first":
+                started.set()
+                release_first.wait(2)
+            return "done"
+
+        manager = self.make_manager(executor)
+        first = manager.submit_message("first")
+        self.assertTrue(started.wait(1))
+        queued = manager.submit_message("queued")
+        stale_revision = manager.get_task(queued.task_id).revision
+
+        self.assertTrue(manager.pause_task(queued.task_id).accepted)
+        rejected = manager.resume_task(
+            queued.task_id, expected_revision=stale_revision
+        )
+        self.assertFalse(rejected.accepted)
+        self.assertEqual(manager.get_task(queued.task_id).state, TaskState.PAUSED)
+
+        current_revision = manager.get_task(queued.task_id).revision
+        self.assertTrue(
+            manager.resume_task(
+                queued.task_id, expected_revision=current_revision
+            ).accepted
+        )
+        release_first.set()
+        self.assertTrue(
+            wait_for(
+                lambda: manager.get_task(queued.task_id).state
+                == TaskState.COMPLETED
+            )
+        )
+
 
 
 if __name__ == "__main__":

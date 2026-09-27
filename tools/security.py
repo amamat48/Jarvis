@@ -141,7 +141,7 @@ class SecurityGate:
         self._cancelled: set[str] = set()
         self._operations: dict[str, tuple[str, str, int, str]] = {}
         self._approvals: dict[str, ApprovalGrant] = {}
-        self._authorized: dict[str, tuple[str, str, int]] = {}
+        self._authorized: dict[str, tuple[str, str, str, int]] = {}
 
     def inspect(self, tool_name: str, arguments: dict[str, Any]) -> tuple[dict[str, Any], PolicyDecision]:
         normalized = normalize_arguments(arguments)
@@ -221,7 +221,12 @@ class SecurityGate:
                 operation.tool_name, normalize_arguments(operation.arguments),
                 fingerprint, secrets.token_urlsafe(32),
             )
-            self._authorized[authorized.token] = (fingerprint, authorized.task_id, authorized.revision)
+            self._authorized[authorized.token] = (
+                fingerprint,
+                authorized.operation_id,
+                authorized.task_id,
+                authorized.revision,
+            )
             return authorized
 
     def consume(self, context: TaskContext, authorized: AuthorizedOperation) -> None:
@@ -241,7 +246,13 @@ class SecurityGate:
                 authorized.tool_name, authorized.arguments,
             )
             issued = self._authorized.get(authorized.token)
-            if issued != (authorized.fingerprint, authorized.task_id, authorized.revision) or expected != authorized.fingerprint:
+            expected_record = (
+                authorized.fingerprint,
+                authorized.operation_id,
+                authorized.task_id,
+                authorized.revision,
+            )
+            if issued != expected_record or expected != authorized.fingerprint:
                 self._authorized.pop(authorized.token, None)
                 raise AuthorizationError("authorization is invalid, reused, or arguments changed")
             self._authorized.pop(authorized.token, None)
@@ -262,7 +273,7 @@ class SecurityGate:
                 if issued_task_id == task_id:
                     self._operations.pop(operation_id, None)
                     self._approvals.pop(operation_id, None)
-            for token, (_, issued_task_id, _) in tuple(self._authorized.items()):
+            for token, (_, _, issued_task_id, _) in tuple(self._authorized.items()):
                 if issued_task_id == task_id:
                     self._authorized.pop(token, None)
 
@@ -312,7 +323,7 @@ class SecurityGate:
             if issued_task_id == task_id and issued_revision != revision:
                 self._approvals.pop(operation_id, None)
                 self._operations.pop(operation_id, None)
-        for token, (_, issued_task_id, issued_revision) in tuple(self._authorized.items()):
+        for token, (_, _, issued_task_id, issued_revision) in tuple(self._authorized.items()):
             if issued_task_id == task_id and issued_revision != revision:
                 self._authorized.pop(token, None)
 

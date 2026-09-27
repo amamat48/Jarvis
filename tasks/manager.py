@@ -21,7 +21,18 @@ from tasks.models import (
     TimelineEntry,
     UserQuestion,
 )
-from tools.runner import DEFAULT_SECURITY_GATE, execute as execute_authorized_operation
+from tools.runner import (
+    DEFAULT_SECURITY_GATE,
+    claim as claim_authorized_operation,
+    execute_claimed,
+)
+from tasks.views import (
+    TaskSnapshotView,
+    TaskView,
+    TaskViewSubscription,
+    project_snapshot,
+    project_task,
+)
 from tools.security import AuthorizedOperation, Operation, SecurityGate, TaskContext
 
 
@@ -36,7 +47,11 @@ _ALLOWED_TRANSITIONS = {
         TaskState.CANCELLED,
     },
     TaskState.WAITING_FOR_USER_INPUT: {TaskState.QUEUED, TaskState.CANCELLED},
-    TaskState.WAITING_FOR_APPROVAL: {TaskState.QUEUED, TaskState.CANCELLED},
+    TaskState.WAITING_FOR_APPROVAL: {
+        TaskState.QUEUED,
+        TaskState.FAILED,
+        TaskState.CANCELLED,
+    },
     TaskState.PAUSED: {TaskState.QUEUED, TaskState.CANCELLED},
     TaskState.COMPLETED: set(),
     TaskState.FAILED: set(),
@@ -208,29 +223,79 @@ class TaskManager:
             )
         )
 
-    def focus_task(self, task_id: str, command_id: str | None = None) -> CommandResult:
+    def focus_task(
+        self,
+        task_id: str,
+        command_id: str | None = None,
+        expected_revision: int | None = None,
+    ) -> CommandResult:
         return self.send_command(
-            TaskCommand(command_id or str(uuid4()), "focus_task", task_id=task_id)
+            TaskCommand(
+                command_id or str(uuid4()),
+                "focus_task",
+                task_id=task_id,
+                expected_revision=expected_revision,
+            )
         )
 
-    def background_task(self, task_id: str, command_id: str | None = None) -> CommandResult:
+    def background_task(
+        self,
+        task_id: str,
+        command_id: str | None = None,
+        expected_revision: int | None = None,
+    ) -> CommandResult:
         return self.send_command(
-            TaskCommand(command_id or str(uuid4()), "background_task", task_id=task_id)
+            TaskCommand(
+                command_id or str(uuid4()),
+                "background_task",
+                task_id=task_id,
+                expected_revision=expected_revision,
+            )
         )
 
-    def pause_task(self, task_id: str, command_id: str | None = None) -> CommandResult:
+    def pause_task(
+        self,
+        task_id: str,
+        command_id: str | None = None,
+        expected_revision: int | None = None,
+    ) -> CommandResult:
         return self.send_command(
-            TaskCommand(command_id or str(uuid4()), "pause_task", task_id=task_id)
+            TaskCommand(
+                command_id or str(uuid4()),
+                "pause_task",
+                task_id=task_id,
+                expected_revision=expected_revision,
+            )
         )
 
-    def resume_task(self, task_id: str, command_id: str | None = None) -> CommandResult:
+    def resume_task(
+        self,
+        task_id: str,
+        command_id: str | None = None,
+        expected_revision: int | None = None,
+    ) -> CommandResult:
         return self.send_command(
-            TaskCommand(command_id or str(uuid4()), "resume_task", task_id=task_id)
+            TaskCommand(
+                command_id or str(uuid4()),
+                "resume_task",
+                task_id=task_id,
+                expected_revision=expected_revision,
+            )
         )
 
-    def cancel_task(self, task_id: str, command_id: str | None = None) -> CommandResult:
+    def cancel_task(
+        self,
+        task_id: str,
+        command_id: str | None = None,
+        expected_revision: int | None = None,
+    ) -> CommandResult:
         return self.send_command(
-            TaskCommand(command_id or str(uuid4()), "cancel_task", task_id=task_id)
+            TaskCommand(
+                command_id or str(uuid4()),
+                "cancel_task",
+                task_id=task_id,
+                expected_revision=expected_revision,
+            )
         )
 
     def answer_question(
@@ -239,6 +304,7 @@ class TaskManager:
         question_id: str,
         answer: str,
         command_id: str | None = None,
+        expected_revision: int | None = None,
     ) -> CommandResult:
         return self.send_command(
             TaskCommand(
@@ -246,6 +312,7 @@ class TaskManager:
                 "answer_question",
                 task_id=task_id,
                 payload={"question_id": question_id, "answer": answer},
+                expected_revision=expected_revision,
             )
         )
 
@@ -274,6 +341,13 @@ class TaskManager:
         ))
 
     def send_command(self, command: TaskCommand) -> CommandResult:
+        """Apply an idempotent command with an optional task-state revision guard.
+
+        The manager epoch and global event sequence identify an event replay cursor;
+        task revision rejects commands based on a stale task snapshot. SecurityGate
+        authorization separately binds a sensitive operation to the task revision at
+        approval time, which is why approval-related events can preserve that revision.
+        """
         with self._condition:
             previous = self._command_results.get(command.command_id)
             if previous is not None:
@@ -591,9 +665,26 @@ class TaskManager:
                 raise _TaskCancelled()
             self._transition_locked(task, TaskState.WAITING_FOR_APPROVAL, "Waiting for approval")
             context = TaskContext(task.task_id, task.revision, task.cancel_requested)
-            operation, decision = self._security_gate.propose(context, tool_name, arguments)
-            if not decision.requires_approval:
-                raise ValueError("The Security Gate did not require approval for this operation.")
+            try:
+                operation, decision = self._security_gate.propose(
+                    context, tool_name, arguments
+                )
+                if not decision.requires_approval:
+                    self._security_gate.reject(operation)
+                    raise ValueError(
+                        "The Security Gate did not require approval for this operation."
+                    )
+            except Exception:
+                # A failed proposal must be terminal and invalidate any Gate-side
+                # record that may have been created before the failure.
+                self._security_gate.cancel_task(task.task_id)
+                self._finish_locked(
+                    task,
+                    TaskState.FAILED,
+                    "Approval could not be prepared. No action was executed.",
+                )
+                raise TaskSuspended()
+
             summary = f"{decision.tool_name} ({decision.risk})"
             if decision.target:
                 summary += f" — {decision.target}"
@@ -628,6 +719,20 @@ class TaskManager:
                 queued_task_ids=tuple(self._queue),
                 tasks=tuple(copy.deepcopy(tuple(self._tasks.values()))),
             )
+
+    def get_view_snapshot(self) -> TaskSnapshotView:
+        return project_snapshot(self.get_snapshot())
+
+    def get_task_view(self, task_id: str) -> TaskView | None:
+        task = self.get_task(task_id)
+        return project_task(task) if task is not None else None
+
+    def subscribe_views(
+        self,
+        after_sequence: int,
+        manager_epoch: str | None = None,
+    ) -> TaskViewSubscription:
+        return TaskViewSubscription(self.subscribe(after_sequence, manager_epoch))
 
     def get_task(self, task_id: str) -> Task | None:
         with self._condition:
@@ -775,17 +880,30 @@ class TaskManager:
             return TaskContext(task.task_id, task.revision, task.cancel_requested or task.state == TaskState.CANCELLED)
 
     def _execute_authorized(self, task_id: str, authorized: AuthorizedOperation) -> str:
-        # Hold the lifecycle lock across final validation and dispatch so cancel/revision
-        # changes cannot race between the check and the tool call.
+        # Claim and consume the one-use authorization atomically with task state.
+        # The runner detaches arguments from the shallow-frozen authorization object.
         with self._condition:
             task = self._require_task_locked(task_id)
-            context = TaskContext(task.task_id, task.revision, task.cancel_requested or task.state == TaskState.CANCELLED)
+            context = TaskContext(
+                task.task_id,
+                task.revision,
+                task.cancel_requested or task.state == TaskState.CANCELLED,
+            )
             if task.state != TaskState.RUNNING or context.cancelled:
                 return "Execution denied: task is cancelled or not running."
             if (authorized.task_id, authorized.revision) != (task.task_id, task.revision):
                 self._security_gate.invalidate_task_revision(task.task_id, task.revision)
                 return "Execution denied: task revision changed."
-            return execute_authorized_operation(context, authorized, gate=self._security_gate)
+            claimed = claim_authorized_operation(
+                context, authorized, gate=self._security_gate
+            )
+            if isinstance(claimed, str):
+                return claimed
+
+        # Cancellation and UI state operations can acquire the manager lock while the
+        # authorized tool performs potentially slow work. Cancellation remains a
+        # safe-boundary request after this one-use claim has been consumed.
+        return execute_claimed(claimed)
 
     def _checkpoint(self, task_id: str, honor_pause: bool = True) -> None:
         with self._condition:

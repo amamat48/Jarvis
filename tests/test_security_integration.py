@@ -3,6 +3,7 @@ import tempfile
 import threading
 import time
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -148,6 +149,57 @@ class SecurityIntegrationTests(unittest.TestCase):
             with patch.dict(runner.TOOLS, {"calculate": lambda expression: order.append("dispatch") or expression}):
                 runner.execute(context, authorized, gate=gate)
         self.assertEqual(order, ["authorized", "dispatch"])
+
+    def test_execution_claim_is_detached_and_single_use(self):
+        calls = []
+        context = TaskContext("claim-once", 1)
+        operation, _ = self.gate.propose(
+            context, "calculate", {"expression": "approved snapshot"}
+        )
+        authorized = self.gate.authorize(context, operation)
+
+        with patch.dict(
+            runner.TOOLS,
+            {"calculate": lambda expression: calls.append(expression) or expression},
+        ):
+            claim = runner.claim(context, authorized, gate=self.gate)
+            self.assertNotIsInstance(claim, str)
+            authorized.arguments["expression"] = "mutated after claim"
+            self.assertEqual(runner.execute_claimed(claim), "approved snapshot")
+            replay = runner.execute_claimed(claim)
+
+        self.assertIn("denied", replay.lower())
+        self.assertEqual(calls, ["approved snapshot"])
+
+    def test_forged_execution_claim_is_denied(self):
+        calls = []
+        with patch.dict(
+            runner.TOOLS,
+            {"calculate": lambda expression: calls.append(expression) or expression},
+        ):
+            forged = runner._ExecutionClaim("not-issued-by-claim")
+            result = runner.execute_claimed(forged)
+
+        self.assertIn("denied", result.lower())
+        self.assertEqual(calls, [])
+
+    def test_authorization_is_bound_to_operation_identity(self):
+        calls = []
+        context = TaskContext("operation-identity", 1)
+        operation, _ = self.gate.propose(
+            context, "calculate", {"expression": "8"}
+        )
+        authorized = self.gate.authorize(context, operation)
+        substituted = replace(authorized, operation_id="different-operation")
+
+        with patch.dict(
+            runner.TOOLS,
+            {"calculate": lambda expression: calls.append(expression) or expression},
+        ):
+            result = runner.execute(context, substituted, gate=self.gate)
+
+        self.assertIn("denied", result.lower())
+        self.assertEqual(calls, [])
 
     def _manager_for_tool(self, tool_name, tool_arguments, function, gate=None):
         fake_ollama = SimpleNamespace(chat=lambda **kwargs: None)
