@@ -107,7 +107,13 @@ TOOLS_SCHEMA = [
             "description": "Retrieve JARVIS's persistent memories.",
             "parameters": {
                 "type": "object",
-                "properties": {},
+                "properties": {
+                    "key": {
+                        "type": "string",
+                        "description": "Optional memory key to retrieve.",
+                        "default": ""
+                    }
+                },
                 "required": []
             }
         }

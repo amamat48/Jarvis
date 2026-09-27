@@ -1,6 +1,7 @@
 import sys
 import json
 import re
+import copy
 from pathlib import Path
 
 import torch
@@ -17,6 +18,9 @@ from peft import PeftModel
 # ============================================================
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 MODEL_NAME = "mistralai/Ministral-3-8B-Reasoning-2512"
 
@@ -55,168 +59,7 @@ MAX_NEW_TOKENS = 512
 # JARVIS TOOL SCHEMA
 # ============================================================
 
-TOOLS_SCHEMA = [
-    {
-        "type": "function",
-        "function": {
-            "name": "read_file",
-            "description": "Read the contents of a file.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Path to the file to read.",
-                    }
-                },
-                "required": ["path"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "write_file",
-            "description": "Write content to a file.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Path to the file to write.",
-                    },
-                    "content": {
-                        "type": "string",
-                        "description": "Content to write to the file.",
-                    },
-                },
-                "required": ["path", "content"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "list_files",
-            "description": "List files and directories at a path.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Directory path to list.",
-                    }
-                },
-                "required": [],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "search_files",
-            "description": "Search files for a text query.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "Text to search for.",
-                    },
-                    "path": {
-                        "type": "string",
-                        "description": "Directory or file path to search.",
-                    },
-                },
-                "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "run_python_file",
-            "description": "Run a Python file.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Path to the Python file.",
-                    }
-                },
-                "required": ["path"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "debug_python_file",
-            "description": "Debug a Python file and report errors.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "path": {
-                        "type": "string",
-                        "description": "Path to the Python file.",
-                    }
-                },
-                "required": ["path"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "calculate",
-            "description": "Calculate a mathematical expression.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "expression": {
-                        "type": "string",
-                        "description": "Mathematical expression to evaluate.",
-                    }
-                },
-                "required": ["expression"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "remember_memory",
-            "description": "Store information in JARVIS memory.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "key": {
-                        "type": "string",
-                        "description": "Memory key.",
-                    },
-                    "value": {
-                        "type": "string",
-                        "description": "Value to remember.",
-                    },
-                },
-                "required": ["key", "value"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "recall_memory",
-            "description": "Recall stored JARVIS memory.",
-            "parameters": {
-                "type": "object",
-                "properties": {},
-                "required": [],
-            },
-        },
-    },
-]
+from model.training_data.mlx_tools import TOOLS_SCHEMA
 
 
 # ============================================================
@@ -256,23 +99,42 @@ def load_evaluation_data():
 
 def normalize_messages(messages):
     normalized = []
+    pending_call_ids = []
+    seen_call_ids = set()
 
-    for message in messages:
-        message = dict(message)
+    for message_index, original_message in enumerate(messages):
+        message = copy.deepcopy(original_message)
 
         role = message.get("role")
 
         if role == "assistant":
-            tool_calls = message.get("tool_calls")
+            tool_calls = message.get("tool_calls") or []
 
             if tool_calls:
                 normalized_tool_calls = []
 
-                for index, tool_call in enumerate(tool_calls):
+                for call_index, tool_call in enumerate(tool_calls):
                     tool_call = dict(tool_call)
 
                     if not tool_call.get("id"):
-                        tool_call["id"] = f"call_{index}"
+                        tool_call["id"] = (
+                            f"eval_call_{message_index}_{call_index}"
+                        )
+
+                    call_id = tool_call["id"]
+
+                    if not isinstance(call_id, str) or not call_id:
+                        raise ValueError(
+                            "Tool-call IDs must be non-empty strings."
+                        )
+
+                    if call_id in seen_call_ids:
+                        raise ValueError(
+                            f"Duplicate tool-call id: {call_id}"
+                        )
+
+                    seen_call_ids.add(call_id)
+                    pending_call_ids.append(call_id)
 
                     function = tool_call.get("function")
 
@@ -295,8 +157,27 @@ def normalize_messages(messages):
                 message["tool_calls"] = normalized_tool_calls
 
         elif role == "tool":
-            if not message.get("tool_call_id"):
-                message["tool_call_id"] = "call_0"
+            tool_call_id = message.get("tool_call_id")
+
+            if not tool_call_id:
+                if not pending_call_ids:
+                    raise ValueError(
+                        "Tool result has no preceding unmatched tool call."
+                    )
+
+                tool_call_id = pending_call_ids[0]
+                message["tool_call_id"] = tool_call_id
+
+            if not isinstance(tool_call_id, str):
+                raise ValueError("Tool-result IDs must be non-empty strings.")
+
+            if tool_call_id not in pending_call_ids:
+                raise ValueError(
+                    "Tool result references an unknown or already matched "
+                    f"tool-call id: {tool_call_id}"
+                )
+
+            pending_call_ids.remove(tool_call_id)
 
             if message.get("content") is None:
                 message["content"] = ""
@@ -308,6 +189,12 @@ def normalize_messages(messages):
                 )
 
         normalized.append(message)
+
+    if pending_call_ids:
+        raise ValueError(
+            "Assistant tool calls have no matching tool results: "
+            + ", ".join(pending_call_ids)
+        )
 
     return normalized
 

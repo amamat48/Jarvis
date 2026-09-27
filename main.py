@@ -1,6 +1,8 @@
 from brain.router import chat
+from brain.prompt import SYSTEM_PROMPT
 from tools.registry import TOOLS, select_tools
 from tools.runner import execute_tool
+from tools.message_serialization import serialize_assistant_message
 from voice_input import listen
 from voice_output import speak
 
@@ -18,6 +20,7 @@ def main():
             "content": SYSTEM_PROMPT
         }
     ]
+    seen_call_ids = set()
 
     while True:
 
@@ -42,6 +45,7 @@ def main():
                     "content": SYSTEM_PROMPT
                 }
             ]
+            seen_call_ids.clear()
 
             print("JARVIS: Conversation cleared.\n")
             continue
@@ -61,16 +65,23 @@ def main():
             tools=list(available_tools.values())
         )
 
-        # Record the model's response
-        messages.append(response.message)
+        # Preserve the assistant response with unique tool-call IDs.
+        assistant_message = serialize_assistant_message(
+            response.message,
+            message_index=len(messages),
+            seen_call_ids=seen_call_ids,
+        )
+        messages.append(assistant_message)
 
         # Did the model request a tool?
-        while response.message.tool_calls:
+        while assistant_message.get("tool_calls"):
 
-            for call in response.message.tool_calls:
+            for call in assistant_message["tool_calls"]:
 
-                tool_name = call.function.name
-                arguments = call.function.arguments
+                function = call.get("function", {})
+                tool_name = function.get("name")
+                arguments = function.get("arguments", {})
+                call_id = call["id"]
 
 
                 print(f"[JARVIS is using {tool_name}]", flush=True)
@@ -81,14 +92,15 @@ def main():
                     result = execute_tool(tool_name, arguments)
 
                 except Exception as error:
+                    result = f"Tool '{tool_name}' failed: {error}"
                     print(f"[TOOL ERROR: {error}]", flush=True)
-                    continue
 
                 # Give the result back to the model
                 messages.append(
                     {
                         "role": "tool",
                         "tool_name": tool_name,
+                        "tool_call_id": call_id,
                         "content": result
                     }
                 )
@@ -99,7 +111,14 @@ def main():
                 tools=list(available_tools.values())
             )
 
-        final_response = response.message.content
+            assistant_message = serialize_assistant_message(
+                response.message,
+                message_index=len(messages),
+                seen_call_ids=seen_call_ids,
+            )
+            messages.append(assistant_message)
+
+        final_response = assistant_message.get("content") or ""
 
         print(f"JARVIS: {final_response}")
 

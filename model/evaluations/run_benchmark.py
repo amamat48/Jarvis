@@ -11,6 +11,7 @@ from brain.prompt import SYSTEM_PROMPT
 from brain.router import chat
 from tools.registry import select_tools
 from tools.runner import execute_tool
+from tools.message_serialization import serialize_assistant_message
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BENCHMARK_FILE = Path(__file__).resolve().parent / "jarvis_benchmark.json"
@@ -35,6 +36,7 @@ def run_case(case: dict) -> dict:
 
     actual_tools = []
     tool_events = []
+    seen_call_ids = set()
 
     available_tools = select_tools(case["input"])
 
@@ -43,12 +45,19 @@ def run_case(case: dict) -> dict:
         tools=list(available_tools.values())
     )
 
-    messages.append(response.message)
+    assistant_message = serialize_assistant_message(
+        response.message,
+        message_index=len(messages),
+        seen_call_ids=seen_call_ids,
+    )
+    messages.append(assistant_message)
 
-    while response.message.tool_calls:
-        for tool_call in response.message.tool_calls:
-            tool_name = tool_call.function.name
-            arguments = tool_call.function.arguments
+    while assistant_message.get("tool_calls"):
+        for tool_call in assistant_message["tool_calls"]:
+            function = tool_call.get("function", {})
+            tool_name = function.get("name")
+            arguments = function.get("arguments", {})
+            call_id = tool_call["id"]
 
             actual_tools.append(tool_name)
 
@@ -61,6 +70,7 @@ def run_case(case: dict) -> dict:
                 {
                     "tool": tool_name,
                     "arguments": arguments,
+                    "tool_call_id": call_id,
                     "result": result
                 }
             )
@@ -69,6 +79,7 @@ def run_case(case: dict) -> dict:
                 {
                     "role": "tool",
                     "tool_name": tool_name,
+                    "tool_call_id": call_id,
                     "content": str(result)
                 }
             )
@@ -78,9 +89,14 @@ def run_case(case: dict) -> dict:
             tools=list(available_tools.values())
         )
 
-        messages.append(response.message)
+        assistant_message = serialize_assistant_message(
+            response.message,
+            message_index=len(messages),
+            seen_call_ids=seen_call_ids,
+        )
+        messages.append(assistant_message)
 
-    final_response = response.message.content or ""
+    final_response = assistant_message.get("content") or ""
 
     expected_tools = case.get("expected_tools", [])
     acceptable_tool_sequences = case.get(
