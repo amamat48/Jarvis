@@ -12,7 +12,6 @@ from brain.router import chat
 from tools.registry import select_tools
 from tools.runner import execute_tool
 
-
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BENCHMARK_FILE = Path(__file__).resolve().parent / "jarvis_benchmark.json"
 RESULTS_FILE = Path(__file__).resolve().parent / "benchmark_results.json"

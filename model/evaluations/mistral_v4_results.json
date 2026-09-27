@@ -1,0 +1,1056 @@
+{
+  "model": "mistralai/Ministral-3-8B-Reasoning-2512",
+  "adapter": "C:\\Users\\amana\\Documents\\Jarvis\\model\\evaluations\\jarvis_lora_v4\\checkpoint-160",
+  "evaluation_file": "C:\\Users\\amana\\Documents\\Jarvis\\model\\evaluations\\jarvis_eval_32.jsonl",
+  "total_examples": 32,
+  "total_assistant_steps": 51,
+  "metrics": {
+    "tool_decision_accuracy": 0.5490196078431373,
+    "tool_selection_accuracy": 0.45098039215686275,
+    "argument_accuracy": 0.29411764705882354
+  },
+  "counts": {
+    "tool_decision_correct": 28,
+    "tool_selection_correct": 23,
+    "argument_correct": 15
+  },
+  "examples": [
+    {
+      "example_index": 1,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "read_file",
+              "arguments": {
+                "path": "brain/router.py"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "read_file",
+              "arguments": {
+                "path": "brain/router.py"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]read_file[ARGS]{\"path\": \"brain/router.py\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        }
+      ]
+    },
+    {
+      "example_index": 2,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "recall_memory",
+              "arguments": {}
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "recall_memory",
+              "arguments": {}
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]recall_memory[ARGS]{}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        },
+        {
+          "message_index": 3,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        }
+      ]
+    },
+    {
+      "example_index": 3,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "search_files",
+              "arguments": {
+                "query": "router implementation"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "list_files",
+              "arguments": {
+                "path": ""
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]list_files[ARGS]{\"path\": \"\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": false,
+          "argument_match": false
+        },
+        {
+          "message_index": 3,
+          "expected_tool_calls": [
+            {
+              "name": "search_files",
+              "arguments": {
+                "query": "def chat"
+              }
+            }
+          ],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        },
+        {
+          "message_index": 5,
+          "expected_tool_calls": [
+            {
+              "name": "read_file",
+              "arguments": {
+                "path": "brain/router.py"
+              }
+            }
+          ],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        },
+        {
+          "message_index": 7,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        }
+      ]
+    },
+    {
+      "example_index": 4,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [
+            {
+              "name": "run_python_file",
+              "arguments": {
+                "path": "main.py"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]run_python_file[ARGS]{\"path\": \"main.py\"}</s>",
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false
+        }
+      ]
+    },
+    {
+      "example_index": 5,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "calculate",
+              "arguments": {
+                "expression": "3180 / 15"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "calculate",
+              "arguments": {
+                "expression": "3180 / 15"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]calculate[ARGS]{\"expression\": \"3180 / 15\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        }
+      ]
+    },
+    {
+      "example_index": 6,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "run_python_file",
+              "arguments": {
+                "path": "test.py"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "run_python_file",
+              "arguments": {
+                "path": "test.py"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]run_python_file[ARGS]{\"path\": \"test.py\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        },
+        {
+          "message_index": 3,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        }
+      ]
+    },
+    {
+      "example_index": 7,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "search_files",
+              "arguments": {
+                "query": "TOOLS"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "search_files",
+              "arguments": {
+                "query": "tool registry",
+                "path": "."
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]search_files[ARGS]{\"query\": \"tool registry\", \"path\": \".\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": false
+        }
+      ]
+    },
+    {
+      "example_index": 8,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "remember_memory",
+              "arguments": {
+                "key": "programming_preference",
+                "value": "C++"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "remember_memory",
+              "arguments": {
+                "key": "preferred_language",
+                "value": "C++"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]remember_memory[ARGS]{\"key\": \"preferred_language\", \"value\": \"C++\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": false
+        },
+        {
+          "message_index": 3,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        }
+      ]
+    },
+    {
+      "example_index": 9,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "debug_python_file",
+              "arguments": {
+                "path": "test.py"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "debug_python_file",
+              "arguments": {
+                "path": "test.py"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]debug_python_file[ARGS]{\"path\": \"test.py\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        }
+      ]
+    },
+    {
+      "example_index": 10,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [
+            {
+              "name": "remember_memory",
+              "arguments": {
+                "key": "that",
+                "value": "Remember that."
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]remember_memory[ARGS]{\"key\": \"that\", \"value\": \"Remember that.\"}</s>",
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false
+        }
+      ]
+    },
+    {
+      "example_index": 11,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": "Control systems are a fascinating and fundamental aspect of engineering and technology. They are designed to manage and regulate the behavior of other systems, devices, or processes by automatically adjusting their behavior based on real-time feedback. Here are a few key points about control systems:\n\n### 1. **Core Concepts**\n   - **Feedback**: Control systems rely on feedback to compare the current state of a system with a desired state (setpoint). This allows the system to make adjustments to minimize the difference between the two.\n   - **Controllers**: These are the \"brains\" of the system, which process the feedback and generate control signals to adjust the system's behavior.\n   - **Actuators**: These are the components that implement the control signals, such as motors, valves, or other devices that physically change the system's state.\n   - **Sensors**: These measure the system's current state and provide the feedback data to the controller.\n\n### 2. **Types of Control Systems**\n   - **Open-Loop Systems**: These do not use feedback. They rely on pre-programmed instructions to operate. They are simpler but less accurate and less adaptable to changes.\n   - **Closed-Loop Systems**: These use feedback to continuously adjust the system's behavior. They are more accurate, adaptable, and robust, but they require sensors and more complex design.\n\n### 3. **Applications**\n   - **Industrial Automation**: Used in manufacturing to control machines, robots, and assembly lines.\n   - **Automotive Systems**: Cruise control, anti-lock braking systems (ABS), and adaptive cruise control.\n   - **Aerospace**: Autopilots, landing systems, and satellite orientation.\n   - **Home Automation**: Thermostats, security systems, and lighting controls.\n   - **Medical Devices**: Pacemakers, ventilators, and surgical robots.\n\n### 4. **Advantages**\n   - **Precision and Accuracy**: Closed-loop systems can achieve high levels of precision by continuously adjusting to minimize error.\n   - **Efficiency**: They optimize the use of resources, such as energy, by adjusting operations in real-time.\n   - **Adaptability**: They can respond to changes in the environment or system dynamics.\n   - **Reliability**: Redundancy and fault-tolerant designs can prevent system failures.\n\n### 5. **Challenges**\n   - **Complexity**: Designing and implementing control systems can be complex, especially for non-linear systems or systems with delays.\n   - **",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        }
+      ]
+    },
+    {
+      "example_index": 12,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": "I'm just a program, so I don't have feelings, but I'm here and ready to help you! How can I assist you today?</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        }
+      ]
+    },
+    {
+      "example_index": 13,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "search_files",
+              "arguments": {
+                "query": "calculate"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "search_files",
+              "arguments": {
+                "query": "def calculate",
+                "path": "."
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]search_files[ARGS]{\"query\": \"def calculate\", \"path\": \".\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": false
+        },
+        {
+          "message_index": 3,
+          "expected_tool_calls": [
+            {
+              "name": "read_file",
+              "arguments": {
+                "path": "tools/calculator.py"
+              }
+            }
+          ],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        },
+        {
+          "message_index": 5,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        }
+      ]
+    },
+    {
+      "example_index": 14,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [
+            {
+              "name": "list_files",
+              "arguments": {}
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]list_files[ARGS]{}</s>",
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false
+        }
+      ]
+    },
+    {
+      "example_index": 15,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "list_files",
+              "arguments": {}
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "list_files",
+              "arguments": {
+                "path": "JARVIS"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]list_files[ARGS]{\"path\": \"JARVIS\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": false
+        }
+      ]
+    },
+    {
+      "example_index": 16,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "search_files",
+              "arguments": {
+                "query": "subprocess.run"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "list_files",
+              "arguments": {
+                "path": ""
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]list_files[ARGS]{\"path\": \"\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": false,
+          "argument_match": false
+        },
+        {
+          "message_index": 3,
+          "expected_tool_calls": [
+            {
+              "name": "read_file",
+              "arguments": {
+                "path": "tools/code_runner.py"
+              }
+            }
+          ],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        },
+        {
+          "message_index": 5,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        }
+      ]
+    },
+    {
+      "example_index": 17,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": "In a control system, **feedback** refers to the process of taking the output of a system and using it to influence the system's behavior, typically to improve performance, stability, or accuracy.\n\n### Key Points About Feedback in Control Systems:\n\n1. **Definition**:\n   - Feedback is the return of a portion of the system's output to its input, often combined with the original input to form a new input signal.\n   - It creates a loop where the system's output is continuously monitored and used to adjust the input.\n\n2. **Purpose**:\n   - **Stability**: Feedback helps stabilize the system by damping oscillations or transients.\n   - **Accuracy**: It allows the system to correct errors and reach the desired setpoint.\n   - **Performance**: Feedback improves the system's response to changes in the input or disturbances.\n\n3. **Types of Feedback**:\n   - **Negative Feedback**: The output is fed back in a way that opposes or reduces the input signal. This is the most common type and is used to stabilize systems and reduce errors.\n   - **Positive Feedback**: The output is fed back in a way that amplifies the input signal. This can lead to instability or oscillations but is sometimes used intentionally for specific purposes, such as oscillators or amplifiers.\n\n4. **Block Diagram Representation**:\n   - In a block diagram of a control system, feedback is represented by a path from the output of the system back to the input, often combined with the original input signal.\n\n5. **Mathematical Representation**:\n   - The system's behavior can be described using transfer functions. Feedback is incorporated into the transfer function by subtracting or adding the feedback signal to the input.\n   - For a system with a forward path transfer function \\( G(s) \\) and a feedback path transfer function \\( H(s) \\), the closed-loop transfer function is:\n     \\[\n     T(s) = \\frac{G(s)}{1 + G(s)H(s)}\n     \\]\n   - This equation shows how feedback affects the system's overall behavior.\n\n6. **Advantages**:\n   - **Error Correction**: The system continuously compares its output to the desired output and adjusts accordingly.\n   - **Disturbance Rejection**: Feedback helps the system reject disturbances or external perturbations.\n   - **Adaptability**: The system can adapt to changes in the environment or system parameters.\n\n7. **Disadvantages**:\n   - **Potential Instability**: If the feedback is not designed properly, it can lead to oscillations or divergence.\n",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        }
+      ]
+    },
+    {
+      "example_index": 18,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "calculate",
+              "arguments": {
+                "expression": "73 * 19 - 20"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "calculate",
+              "arguments": {
+                "expression": "73 * 19 - 20"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]calculate[ARGS]{\"expression\": \"73 * 19 - 20\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        }
+      ]
+    },
+    {
+      "example_index": 19,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": "I understand that you prefer C++ over Python. C++ is known for its performance, low-level memory control, and efficiency, which can be very appealing for tasks like game development, high-performance computing, or systems programming. Python, on the other hand, is often favored for its simplicity, readability, and rapid development capabilities.\n\nWhat specific aspects of C++ do you enjoy the most? Or is there a particular project or problem you're working on where C++ is the better choice?</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        }
+      ]
+    },
+    {
+      "example_index": 20,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "read_file",
+              "arguments": {
+                "path": "brain/prompt.py"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "debug_python_file",
+              "arguments": {
+                "path": "brain/prompt.py"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]debug_python_file[ARGS]{\"path\": \"brain/prompt.py\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": false,
+          "argument_match": false
+        }
+      ]
+    },
+    {
+      "example_index": 21,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "search_files",
+              "arguments": {
+                "query": "select_tools"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "search_files",
+              "arguments": {
+                "query": "select_tools",
+                "path": "."
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]search_files[ARGS]{\"query\": \"select_tools\", \"path\": \".\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": false
+        }
+      ]
+    },
+    {
+      "example_index": 22,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "list_files",
+              "arguments": {}
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "list_files",
+              "arguments": {
+                "path": "JARVIS"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]list_files[ARGS]{\"path\": \"JARVIS\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": false
+        }
+      ]
+    },
+    {
+      "example_index": 23,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "run_python_file",
+              "arguments": {
+                "path": "model/evaluations/qwen_baseline.py"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "run_python_file",
+              "arguments": {
+                "path": "model/evaluations/qwen_baseline.py"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]run_python_file[ARGS]{\"path\": \"model/evaluations/qwen_baseline.py\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        }
+      ]
+    },
+    {
+      "example_index": 24,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "debug_python_file",
+              "arguments": {
+                "path": "model/evaluations/run_benchmark.py"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "debug_python_file",
+              "arguments": {
+                "path": "model/evaluations/run_benchmark.py"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]debug_python_file[ARGS]{\"path\": \"model/evaluations/run_benchmark.py\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        }
+      ]
+    },
+    {
+      "example_index": 25,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [
+            {
+              "name": "list_files",
+              "arguments": {}
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]list_files[ARGS]{}</s>",
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false
+        }
+      ]
+    },
+    {
+      "example_index": 26,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": "It seems like you didn't provide the full division problem. Could you please specify what you're dividing 3973 by?</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        }
+      ]
+    },
+    {
+      "example_index": 27,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "remember_memory",
+              "arguments": {
+                "key": "explanation_preference",
+                "value": "concise technical explanations"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "remember_memory",
+              "arguments": {
+                "key": "user_preferences",
+                "value": "concise technical explanations"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]remember_memory[ARGS]{\"key\": \"user_preferences\", \"value\": \"concise technical explanations\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": false
+        }
+      ]
+    },
+    {
+      "example_index": 28,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "recall_memory",
+              "arguments": {}
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "recall_memory",
+              "arguments": {}
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]recall_memory[ARGS]{}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        },
+        {
+          "message_index": 3,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        }
+      ]
+    },
+    {
+      "example_index": 29,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "search_files",
+              "arguments": {
+                "query": "remember_memory"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "debug_python_file",
+              "arguments": {
+                "path": "remember_memory.py"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]debug_python_file[ARGS]{\"path\": \"remember_memory.py\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": false,
+          "argument_match": false
+        },
+        {
+          "message_index": 3,
+          "expected_tool_calls": [
+            {
+              "name": "read_file",
+              "arguments": {
+                "path": "tools/memory_tools.py"
+              }
+            }
+          ],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        },
+        {
+          "message_index": 5,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        }
+      ]
+    },
+    {
+      "example_index": 30,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "search_files",
+              "arguments": {
+                "query": "debug_python_file"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "list_files",
+              "arguments": {
+                "path": ""
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]list_files[ARGS]{\"path\": \"\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": false,
+          "argument_match": false
+        },
+        {
+          "message_index": 3,
+          "expected_tool_calls": [
+            {
+              "name": "read_file",
+              "arguments": {
+                "path": "tools/debugger.py"
+              }
+            }
+          ],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        },
+        {
+          "message_index": 5,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        }
+      ]
+    },
+    {
+      "example_index": 31,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "search_files",
+              "arguments": {
+                "query": "calculator implementation"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "search_files",
+              "arguments": {
+                "query": "calculator",
+                "path": "."
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]search_files[ARGS]{\"query\": \"calculator\", \"path\": \".\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": false
+        },
+        {
+          "message_index": 3,
+          "expected_tool_calls": [
+            {
+              "name": "search_files",
+              "arguments": {
+                "query": "calculate"
+              }
+            }
+          ],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        },
+        {
+          "message_index": 5,
+          "expected_tool_calls": [
+            {
+              "name": "read_file",
+              "arguments": {
+                "path": "tools/calculator.py"
+              }
+            }
+          ],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        },
+        {
+          "message_index": 7,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        }
+      ]
+    },
+    {
+      "example_index": 32,
+      "assistant_steps": [
+        {
+          "message_index": 1,
+          "expected_tool_calls": [
+            {
+              "name": "run_python_file",
+              "arguments": {
+                "path": "model/evaluations/fixtures/benchmark_python.py"
+              }
+            }
+          ],
+          "predicted_tool_calls": [
+            {
+              "name": "run_python_file",
+              "arguments": {
+                "path": "model/evaluations/fixtures/benchmark_python.py"
+              }
+            }
+          ],
+          "raw_response": "[TOOL_CALLS]run_python_file[ARGS]{\"path\": \"model/evaluations/fixtures/benchmark_python.py\"}</s>",
+          "tool_decision_match": true,
+          "tool_selection_match": true,
+          "argument_match": true
+        },
+        {
+          "message_index": 3,
+          "expected_tool_calls": [],
+          "predicted_tool_calls": [],
+          "raw_response": null,
+          "tool_decision_match": false,
+          "tool_selection_match": false,
+          "argument_match": false,
+          "error": "Unexpected tool call id call_0 in tool results"
+        }
+      ]
+    }
+  ]
+}
