@@ -1,7 +1,9 @@
 from pathlib import Path
+from tools.security import AuthorizationError, SecurityGate
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_SECURITY = SecurityGate(PROJECT_ROOT)
 
 SOURCE_EXTENSIONS = {
     ".py",
@@ -34,13 +36,14 @@ def search_files(query: str) -> str:
 
         relative_path = path.relative_to(PROJECT_ROOT)
 
-        if ".git" in relative_path.parts:
+        try:
+            _SECURITY.resolve_project_path(str(relative_path))
+        except AuthorizationError:
             continue
 
-        if ".venv" in relative_path.parts:
+        if any(_SECURITY._is_secret_part(part) for part in relative_path.parts):
             continue
-
-        if ".env" in relative_path.parts:
+        if ".git" in relative_path.parts or ".venv" in relative_path.parts:
             continue
 
         if path.suffix.lower() not in SOURCE_EXTENSIONS:

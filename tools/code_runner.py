@@ -1,62 +1,25 @@
 from pathlib import Path
-import subprocess
-import sys
+
+from tools.execution_adapter import ExecutionRequirements, HostPythonAdapter
+from tools.security import AuthorizationError, SecurityGate
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+_ADAPTER = HostPythonAdapter()
 
 
 def run_python_file(path: str) -> str:
-    """
-    Run a Python file inside the JARVIS project.
-
-    Args:
-        path: Path to a Python file, relative to the JARVIS project.
-
-    Returns:
-        The program's output or error information.
-    """
-
+    """Fail closed until an OS-enforced execution adapter is configured."""
     try:
-        file_path = (PROJECT_ROOT / path).resolve()
-
-        # Keep execution inside the JARVIS project.
-        if not file_path.is_relative_to(PROJECT_ROOT):
-            return "Execution denied: file is outside the JARVIS project."
-
-        # Only allow Python source files for now.
-        if file_path.suffix != ".py":
+        file_path = SecurityGate(PROJECT_ROOT).resolve_project_path(path)
+        if file_path.suffix.lower() != ".py":
             return "Execution denied: only Python files can be run."
-
-        # Don't allow execution of protected project areas.
-        if ".env" in file_path.parts or ".git" in file_path.parts:
-            return "Execution denied: protected file or directory."
-
         if not file_path.is_file():
             return f"File not found: {path}"
-
-        result = subprocess.run(
-            [sys.executable, str(file_path)],
-            cwd=PROJECT_ROOT,
-            capture_output=True,
-            text=True,
-            timeout=10
+        return _ADAPTER.execute(
+            str(file_path), ExecutionRequirements(filesystem_roots=(str(file_path.parent),))
         )
-
-        output = []
-
-        if result.stdout:
-            output.append(f"STDOUT:\n{result.stdout}")
-
-        if result.stderr:
-            output.append(f"STDERR:\n{result.stderr}")
-
-        output.append(f"Exit code: {result.returncode}")
-
-        return "\n".join(output)
-
-    except subprocess.TimeoutExpired:
-        return "Execution timed out after 10 seconds."
-
+    except AuthorizationError as error:
+        return f"Execution denied: {error}"
     except Exception as error:
-        return f"Error running file: {error}"
+        return f"Execution unavailable: {error}"
