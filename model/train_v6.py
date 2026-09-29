@@ -32,7 +32,7 @@ MAX_LENGTH = 1024
 BATCH_SIZE = 1
 GRADIENT_ACCUMULATION_STEPS = 1
 LEARNING_RATE = 1e-5
-TOTAL_ITERATIONS = 120
+TOTAL_ITERATIONS = 240
 VALIDATION_INTERVAL = 40
 VALIDATION_FRACTION = 0.10
 SEED = 42
@@ -401,7 +401,18 @@ def evaluate(model, validation_dataset, backend, device):
 
 
 # Final save
+def ensure_final_output_is_empty():
+    final_dir = OUTPUT_DIR / "final"
+    if final_dir.exists() and (
+        not final_dir.is_dir() or any(final_dir.iterdir())
+    ):
+        raise FileExistsError(
+            f"Refusing to overwrite existing V6 adapter output: {final_dir}"
+        )
+
+
 def save_final_adapter(model, backend):
+    ensure_final_output_is_empty()
     final_dir = OUTPUT_DIR / "final"
     final_dir.mkdir(parents=True, exist_ok=True)
     model.save_pretrained(final_dir)
@@ -484,6 +495,8 @@ def main():
     print(f"Iterations: {TOTAL_ITERATIONS}")
     print(f"Validation holdout: {VALIDATION_FRACTION:.0%}")
     print()
+
+    ensure_final_output_is_empty()
 
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is not available")

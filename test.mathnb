@@ -1,0 +1,22 @@
+{
+  "metadata": {
+    "created": "2026-09-28T17:31:50.765024",
+    "modified": "2026-09-28T17:31:55.049399",
+    "version": "1.0"
+  },
+  "cells": [
+    {
+      "id": "ec83a5a8",
+      "cell_type": "code",
+      "source": "2 + 2",
+      "outputs": [],
+      "status": "success",
+      "execution_count": 1,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": []
+    }
+  ]
+}

@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JARVIS</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script defer src="/static/app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">J</span><div><strong>JARVIS</strong><small>Local assistant</small></div></div>
+      <button id="new-chat" class="secondary full">＋ New conversation</button>
+      <div class="section-title">ACTIVE TASKS <span id="task-count">0</span></div>
+      <div id="task-list" class="task-list"></div>
+      <div class="sidebar-foot">Tasks keep separate conversation contexts.</div>
+    </aside>
+    <main class="main-panel">
+<header class="topbar">
+        <div><div class="eyebrow">WORKSPACE</div><h1 id="conversation-title">New conversation</h1></div>
+        <div class="top-actions">
+          <label for="mode">Mode</label>
+          <select id="mode"><option value="demo">Demo</option><option value="real">Real runtime</option></select>
+          <span id="mode-badge" class="badge">DEMO</span>
+        </div>
+      </header>
+      <nav class="tabs" role="tablist" aria-label="Panels">
+        <button class="tab active" role="tab" aria-selected="true" data-tab="chat">Chat</button>
+        <button class="tab" role="tab" aria-selected="false" data-tab="mathnotebook">MathNotebook</button>
+      </nav>
+      <section id="panel-chat" class="panel active" role="tabpanel">
+        <div id="chat" class="chat" aria-live="polite"></div>
+        <form id="composer" class="composer">
+          <textarea id="message" rows="2" placeholder="Message JARVIS… (try "Analyze my Cessna simulation.")" aria-label="Message JARVIS"></textarea>
+          <div class="composer-foot"><span>Enter to send · Shift+Enter for a new line</span><button id="send" class="primary" type="submit">Send <span>↗</span></button></div>
+        </form>
+        <div class="main-note">Simple questions stay in chat. Longer work appears in the task panel.</div>
+      </section>
+      <section id="panel-mathnotebook" class="panel" role="tabpanel" aria-hidden="true">
+        <div class="mathnotebook-toolbar">
+          <select id="mn-notebook-select" aria-label="Notebook">
+            <option value="">— New Notebook —</option>
+          </select>
+          <button id="mn-new" class="secondary">＋ New</button>
+          <button id="mn-save" class="secondary">Save</button>
+          <button id="mn-load" class="secondary">Load</button>
+          <button id="mn-eval-all" class="primary">▶ Evaluate All</button>
+        </div>
+        <div id="mn-cells" class="mn-cells"></div>
+        <div class="mn-add-cell">
+          <select id="mn-cell-type" aria-label="Cell type">
+            <option value="code">Code</option>
+            <option value="markdown">Markdown</option>
+          </select>
+          <textarea id="mn-cell-source" rows="3" placeholder="Enter code or markdown..."></textarea>
+          <button id="mn-add-cell" class="primary">Add Cell</button>
+        </div>
+      </section>
+    </main>
+    <aside class="detail-panel">
+      <div class="detail-head"><div><div class="eyebrow">FOCUS MODE</div><h2 id="detail-title">Select a task</h2></div><button id="close-detail" class="icon-button" title="Close details">×</button></div>
+      <div id="detail-empty" class="empty-state"><div class="empty-icon">◌</div><p>Choose a task to view its progress, activity, and controls.</p></div>
+      <div id="detail-content" class="hidden">
+        <div id="detail-state" class="state-line"></div>
+        <div class="progress-track"><div id="detail-progress" class="progress-fill"></div></div>
+        <div class="progress-caption"><span id="detail-activity">Waiting</span><span id="detail-percent">0%</span></div>
+        <div class="button-row"><button id="pause-task" class="secondary">Pause</button><button id="resume-task" class="secondary">Resume</button><button id="cancel-task" class="danger">Cancel</button></div>
+        <button id="status-task" class="text-button">What are you doing?</button>
+        <h3>Work steps</h3><ol id="detail-steps" class="steps"></ol>
+        <h3>Recent activity</h3><div id="detail-timeline" class="timeline"></div>
+        <div id="approval-box" class="approval-box hidden"><strong>Approval required</strong><p id="approval-summary"></p><div class="button-row"><button id="approve-task" class="primary">Approve</button><button id="reject-task" class="secondary">Reject</button></div></div>
+        <div id="question-box" class="approval-box hidden"><strong>JARVIS needs your input</strong><p id="question-prompt"></p><form id="answer-form"><input id="answer-input" autocomplete="off" placeholder="Your answer"><button class="primary" type="submit">Send</button></form></div>
+        <div id="result-box" class="result-box hidden"><h3>Result</h3><p id="result-text"></p></div>
+      </div>
+    </aside>
+  </div>
+  <dialog id="activity-dialog" class="activity-dialog"><div class="dialog-head"><div><div class="eyebrow">ADVANCED WORK</div><h2 id="dialog-title">Task activity</h2></div><button id="dialog-close" class="icon-button">×</button></div><div id="dialog-body"></div></dialog>
+  <div id="toast" class="toast" role="status"></div>
+</body>
+</html>

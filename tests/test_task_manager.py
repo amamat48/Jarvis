@@ -35,6 +35,7 @@ def wait_for(predicate, timeout=3.0):
 
 class TaskManagerTests(unittest.TestCase):
     def make_manager(self, executor, **kwargs):
+        kwargs.setdefault("max_concurrent_tasks", 1)
         manager = TaskManager(executor=executor, system_prompt="system", **kwargs)
         self.addCleanup(manager.close)
         return manager
@@ -68,6 +69,82 @@ class TaskManagerTests(unittest.TestCase):
         types = [event.event_type for event in events]
         self.assertLess(types.index("task_created"), types.index("task_queued"))
         self.assertEqual(types[-1], "task_finished")
+
+    def test_independent_tasks_run_concurrently_and_report_progress(self):
+        first_started = threading.Event()
+        release_first = threading.Event()
+        second_finished = threading.Event()
+
+        def executor(request, hooks):
+            if request.user_message == "background analysis":
+                first_started.set()
+                hooks.update_progress(42)
+                release_first.wait(2)
+                return "analysis done"
+            second_finished.set()
+            return "side answer"
+
+        manager = self.make_manager(executor, max_concurrent_tasks=2)
+        first = manager.submit_message("background analysis", manager.create_conversation())
+        self.assertTrue(first_started.wait(1))
+        second = manager.submit_message("side question", manager.create_conversation())
+        self.assertTrue(second_finished.wait(1), "independent task blocked behind background task")
+        self.assertEqual(manager.get_task(first.task_id).progress, 42)
+        self.assertIn(first.task_id, manager.get_snapshot().active_task_ids)
+        self.assertTrue(wait_for(lambda: manager.get_task(second.task_id).state == TaskState.COMPLETED))
+        release_first.set()
+        self.assertTrue(wait_for(lambda: manager.get_task(first.task_id).state == TaskState.COMPLETED))
+
+    def test_cancelling_one_concurrent_task_does_not_cancel_another(self):
+        cancel_entered = threading.Event()
+        other_entered = threading.Event()
+        release_cancelled = threading.Event()
+        release_other = threading.Event()
+
+        def executor(request, hooks):
+            if request.user_message == "cancel this":
+                cancel_entered.set()
+                release_cancelled.wait(2)
+                hooks.checkpoint()
+            other_entered.set()
+            release_other.wait(2)
+            hooks.checkpoint()
+            return "independent result"
+
+        manager = self.make_manager(executor, max_concurrent_tasks=2)
+        cancelled = manager.submit_message("cancel this", manager.create_conversation())
+        other = manager.submit_message("keep running", manager.create_conversation())
+        self.assertTrue(cancel_entered.wait(1))
+        self.assertTrue(other_entered.wait(1))
+        self.assertTrue(manager.cancel_task(cancelled.task_id).accepted)
+        release_cancelled.set()
+        self.assertTrue(wait_for(lambda: manager.get_task(cancelled.task_id).state == TaskState.CANCELLED))
+        self.assertEqual(manager.get_task(other.task_id).state, TaskState.RUNNING)
+        release_other.set()
+        self.assertTrue(wait_for(lambda: manager.get_task(other.task_id).state == TaskState.COMPLETED))
+
+    def test_same_conversation_tasks_remain_ordered_with_multiple_workers(self):
+        started = threading.Event()
+        release = threading.Event()
+        order = []
+
+        def executor(request, hooks):
+            order.append(request.user_message)
+            if request.user_message == "first turn":
+                started.set()
+                release.wait(2)
+            return request.user_message
+
+        manager = self.make_manager(executor, max_concurrent_tasks=2)
+        conversation = manager.create_conversation()
+        first = manager.submit_message("first turn", conversation)
+        self.assertTrue(started.wait(1))
+        second = manager.submit_message("second turn", conversation)
+        time.sleep(0.05)
+        self.assertEqual(order, ["first turn"])
+        release.set()
+        self.assertTrue(wait_for(lambda: manager.get_task(second.task_id).state == TaskState.COMPLETED))
+        self.assertEqual(order, ["first turn", "second turn"])
 
     def test_pause_and_resume_at_safe_boundary(self):
         started = threading.Event()
@@ -414,6 +491,8 @@ class TaskManagerTests(unittest.TestCase):
             execute_authorized=lambda operation: "4",
             request_approval=lambda name, arguments, call_id: None,
             security_gate=SecurityGate(),
+            update_progress=lambda progress: None,
+            update_step=lambda step_id, title, state: None,
         )
         request = TaskExecutionRequest(
             task_id="task",
@@ -432,10 +511,14 @@ class TaskManagerTests(unittest.TestCase):
                 result = orchestrator.execute_task_turn(request, hooks)
 
         self.assertEqual(result, "4")
-        select.assert_called_once_with("calculate 2 + 2")
+        select.assert_called_once()
+        self.assertEqual(select.call_args.args, ("calculate 2 + 2",))
+        self.assertEqual(select.call_args.kwargs["context"], request.messages)
         self.assertEqual(chat_inputs[1][0][-1]["content"], "4")
-        self.assertEqual(chat_inputs[0][1], [tool_schema])
-        self.assertEqual(chat_inputs[1][1], [tool_schema])
+        from tools.schemas import schemas_for
+        expected_tools = schemas_for(["calculate"])
+        self.assertEqual(chat_inputs[0][1], expected_tools)
+        self.assertEqual(chat_inputs[1][1], expected_tools)
         self.assertEqual(chat_inputs[1][0][-2]["tool_calls"][0]["id"], "call-1")
         self.assertEqual(chat_inputs[1][0][-1]["tool_call_id"], "call-1")
         self.assertEqual(chat_inputs[1][0][-1]["content"], "4")

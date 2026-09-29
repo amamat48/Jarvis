@@ -1,0 +1,41 @@
+{
+  "metadata": {
+    "created": "2026-09-28T17:38:42.726410",
+    "modified": "2026-09-28T17:38:49.352973",
+    "version": "1.0"
+  },
+  "cells": [
+    {
+      "id": "a67a4fb7",
+      "cell_type": "code",
+      "source": "5*meter/second",
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": "5*c*d*e**3*m*n*o*r*t/s",
+            "text/latex": "\\frac{5 c d e^{3} m n o r t}{s}"
+          },
+          "metadata": {}
+        }
+      ],
+      "status": "success",
+      "execution_count": 1,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": [
+        "e",
+        "o",
+        "s",
+        "r",
+        "m",
+        "t",
+        "d",
+        "n",
+        "c"
+      ]
+    }
+  ]
+}

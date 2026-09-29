@@ -1,6 +1,5 @@
 import sys
 import json
-import re
 import copy
 from pathlib import Path
 
@@ -25,14 +24,14 @@ if str(PROJECT_ROOT) not in sys.path:
 MODEL_NAME = "mistralai/Ministral-3-8B-Reasoning-2512"
 
 # ============================================================
-# V5 ADAPTER
+# V6 ADAPTER
 # ============================================================
 
 ADAPTER_PATH = (
     PROJECT_ROOT
     / "model"
     / "evaluations"
-    / "jarvis_lora_v5"
+    / "jarvis_lora_v6"
     / "final"
 )
 
@@ -50,14 +49,14 @@ EVAL_FILE = (
 )
 
 # ============================================================
-# V5 RESULTS
+# V6 RESULTS
 # ============================================================
 
 RESULTS_FILE = (
     PROJECT_ROOT
     / "model"
     / "evaluations"
-    / "mistral_v5_results.json"
+    / "mistral_v6_results.json"
 )
 
 
@@ -65,7 +64,6 @@ RESULTS_FILE = (
 # GENERATION SETTINGS
 # ============================================================
 
-MAX_INPUT_TOKENS = 1024
 MAX_NEW_TOKENS = 512
 
 
@@ -74,6 +72,7 @@ MAX_NEW_TOKENS = 512
 # ============================================================
 
 from model.training_data.mlx_tools import TOOLS_SCHEMA
+from brain.v6_format import parse_arguments, parse_model_tool_calls
 
 
 # ============================================================
@@ -274,152 +273,6 @@ def normalize_messages(messages):
 
 
 # ============================================================
-# ARGUMENT PARSING
-# ============================================================
-
-def parse_arguments(raw_arguments):
-    if raw_arguments is None:
-        return {}
-
-    if isinstance(raw_arguments, dict):
-        return raw_arguments
-
-    if not isinstance(raw_arguments, str):
-        return None
-
-    raw_arguments = raw_arguments.strip()
-
-    if not raw_arguments:
-        return {}
-
-    try:
-        parsed = json.loads(raw_arguments)
-    except json.JSONDecodeError:
-        return None
-
-    if isinstance(parsed, dict):
-        return parsed
-
-    return None
-
-
-# ============================================================
-# MINISTRAL NATIVE TOOL-CALL PARSER
-#
-# Expected format:
-#
-# [TOOL_CALLS]read_file[ARGS]{"path":"foo.py"}
-#
-# Multiple calls:
-#
-# [TOOL_CALLS]read_file[ARGS]{"path":"a.py"}
-# [TOOL_CALLS]read_file[ARGS]{"path":"b.py"}
-# ============================================================
-
-def parse_tool_calls_bracket_format(text):
-    if not text:
-        return []
-
-    pattern = re.compile(
-        r"\[TOOL_CALLS\]\s*"
-        r"(?P<name>[A-Za-z_][A-Za-z0-9_]*)"
-        r"\s*\[ARGS\]\s*"
-        r"(?P<arguments>\{.*?\})",
-        re.DOTALL,
-    )
-
-    matches = pattern.finditer(text)
-
-    tool_calls = []
-
-    for match in matches:
-        name = match.group("name")
-        raw_arguments = match.group("arguments")
-
-        arguments = parse_arguments(raw_arguments)
-
-        if arguments is None:
-            continue
-
-        tool_calls.append(
-            {
-                "name": name,
-                "arguments": arguments,
-            }
-        )
-
-    return tool_calls
-
-
-# ============================================================
-# XML TOOL-CALL FALLBACK
-#
-# Supports:
-#
-# <tool_call>
-# {"name":"read_file","arguments":{"path":"foo.py"}}
-# </tool_call>
-# ============================================================
-
-def parse_xml_tool_calls(text):
-    if not text:
-        return []
-
-    pattern = re.compile(
-        r"<tool_call>\s*(.*?)\s*</tool_call>",
-        re.DOTALL | re.IGNORECASE,
-    )
-
-    tool_calls = []
-
-    for match in pattern.finditer(text):
-        raw_call = match.group(1).strip()
-
-        try:
-            parsed = json.loads(raw_call)
-        except json.JSONDecodeError:
-            continue
-
-        if not isinstance(parsed, dict):
-            continue
-
-        name = parsed.get("name")
-
-        if not name:
-            continue
-
-        arguments = parsed.get("arguments", {})
-
-        if isinstance(arguments, str):
-            arguments = parse_arguments(arguments)
-
-        if arguments is None:
-            continue
-
-        tool_calls.append(
-            {
-                "name": name,
-                "arguments": arguments,
-            }
-        )
-
-    return tool_calls
-
-
-# ============================================================
-# MODEL TOOL-CALL PARSER
-# ============================================================
-
-def parse_model_tool_calls(text):
-    bracket_calls = parse_tool_calls_bracket_format(text)
-
-    if bracket_calls:
-        return bracket_calls
-
-    return parse_xml_tool_calls(text)
-
-
-# ============================================================
 # EXPECTED TOOL-CALL EXTRACTION
 # ============================================================
 
@@ -536,7 +389,7 @@ def arguments_match(
 
 
 # ============================================================
-# LOAD BASE MODEL + V5 LORA
+# LOAD BASE MODEL + V6 LORA
 # ============================================================
 
 def load_model():
@@ -545,11 +398,11 @@ def load_model():
 
     if not ADAPTER_PATH.exists():
         raise FileNotFoundError(
-            f"V5 adapter not found:\n{ADAPTER_PATH}"
+            f"V6 adapter not found:\n{ADAPTER_PATH}"
         )
 
     print()
-    print("V5 adapter verified:")
+    print("V6 adapter verified:")
     print(ADAPTER_PATH.resolve())
 
     bnb_config = BitsAndBytesConfig(
@@ -567,7 +420,7 @@ def load_model():
         tie_word_embeddings=False,
     )
 
-    print("Loading V5 LoRA adapter...")
+    print("Loading V6 LoRA adapter...")
 
     model = PeftModel.from_pretrained(
         model,
@@ -583,10 +436,91 @@ def load_model():
 # GENERATION
 # ============================================================
 
+def _config_value(config, name):
+    if isinstance(config, dict):
+        return config.get(name)
+    return getattr(config, name, None)
+
+
+def _get_input_token_limit(model):
+    """Reserve the output budget within the model's configured context window."""
+    config = getattr(model, "config", None)
+    text_config = _config_value(config, "text_config")
+    generation_config = getattr(model, "generation_config", None)
+    configured_limits = (
+        _config_value(text_config, "max_position_embeddings"),
+        _config_value(config, "max_position_embeddings"),
+        _config_value(generation_config, "max_length"),
+    )
+    context_limits = [
+        int(limit)
+        for limit in configured_limits
+        if isinstance(limit, int) and limit > 0
+    ]
+    if not context_limits:
+        raise ValueError("Could not determine the V6 model's supported context length.")
+
+    input_limit = min(context_limits) - MAX_NEW_TOKENS
+    if input_limit <= 0:
+        raise ValueError("The V6 model context is smaller than its generation budget.")
+    return input_limit
+
+
+def _drop_oldest_user_turn(messages):
+    """Drop one complete old user turn while preserving system and newest turns."""
+    user_positions = [
+        index
+        for index, message in enumerate(messages)
+        if message.get("role") == "user"
+    ]
+    if len(user_positions) < 2:
+        return None
+
+    start, next_start = user_positions[:2]
+    return [
+        message
+        for index, message in enumerate(messages)
+        if not (
+            start <= index < next_start
+            and message.get("role") != "system"
+        )
+    ]
+
+
+def _encode_prompt_with_budget(backend, messages, tools, max_input_tokens):
+    """Encode without tokenizer truncation, pruning only complete oldest turns."""
+    current_messages = copy.deepcopy(messages)
+
+    while True:
+        encoded = backend.apply_chat_template(
+            current_messages,
+            tools=tools,
+            add_generation_prompt=True,
+            tokenize=True,
+            truncation=False,
+            return_tensors="pt",
+            return_dict=True,
+        )
+        input_ids = encoded.get("input_ids")
+        if input_ids is None or input_ids.ndim != 2 or input_ids.shape[0] != 1:
+            raise ValueError("V6 prompt encoding must contain one input_ids sequence.")
+
+        if input_ids.shape[1] <= max_input_tokens:
+            return encoded
+
+        trimmed_messages = _drop_oldest_user_turn(current_messages)
+        if trimmed_messages is None:
+            raise ValueError(
+                "The V6 system prompt, available tools, and newest user turn exceed "
+                f"the supported input budget of {max_input_tokens} tokens."
+            )
+        current_messages = trimmed_messages
+
 def generate_response(
     model,
     backend,
     messages,
+    tools=None,
 ):
     normalized_messages = normalize_messages(
         messages
@@ -598,15 +532,12 @@ def generate_response(
             "message list."
         )
 
-    encoded = backend.apply_chat_template(
+    active_tools = TOOLS_SCHEMA if tools is None else tools
+    encoded = _encode_prompt_with_budget(
+        backend,
         normalized_messages,
-        tools=TOOLS_SCHEMA,
-        add_generation_prompt=True,
-        tokenize=True,
-        truncation=True,
-        max_length=MAX_INPUT_TOKENS,
-        return_tensors="pt",
-        return_dict=True,
+        tools=active_tools,
+        max_input_tokens=_get_input_token_limit(model),
     )
 
     encoded = {
@@ -644,7 +575,7 @@ def generate_response(
 
 def main():
     print("=" * 70)
-    print("JARVIS MISTRAL V5 EVALUATION")
+    print("JARVIS MISTRAL V6 EVALUATION")
     print("=" * 70)
 
     print()
@@ -659,7 +590,7 @@ def main():
 
     if not ADAPTER_PATH.exists():
         raise FileNotFoundError(
-            "V5 adapter does not exist:\n"
+            "V6 adapter does not exist:\n"
             f"{ADAPTER_PATH.resolve()}"
         )
 
@@ -800,6 +731,7 @@ def main():
                     model,
                     backend,
                     context,
+                    tools=example.get("tools", []),
                 )
 
                 predicted_calls = parse_model_tool_calls(
@@ -981,7 +913,7 @@ def main():
 
     print()
     print("=" * 70)
-    print("V5 EVALUATION COMPLETE")
+    print("V6 EVALUATION COMPLETE")
     print("=" * 70)
 
     print()
@@ -1025,7 +957,7 @@ def main():
     print()
 
     print(
-        "V5 adapter evaluated:"
+        "V6 adapter evaluated:"
     )
 
     print(

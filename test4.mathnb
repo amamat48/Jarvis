@@ -1,0 +1,75 @@
+{
+  "metadata": {
+    "created": "2026-09-28T17:37:17.051528",
+    "modified": "2026-09-28T17:38:30.242563",
+    "version": "1.0"
+  },
+  "cells": [
+    {
+      "id": "1db95545",
+      "cell_type": "code",
+      "source": "Matrix([[1, 2], [3, 4]])",
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": "Matrix([[1, 2], [3, 4]])",
+            "text/latex": "\\left[\\begin{matrix}1 & 2\\\\3 & 4\\end{matrix}\\right]"
+          },
+          "metadata": {}
+        }
+      ],
+      "status": "success",
+      "execution_count": 1,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": []
+    },
+    {
+      "id": "1d9328ae",
+      "cell_type": "code",
+      "source": "(3 + 4*I)**2",
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": "(3 + 4*I)**2",
+            "text/latex": "\\left(3 + 4 i\\right)^{2}"
+          },
+          "metadata": {}
+        }
+      ],
+      "status": "success",
+      "execution_count": 2,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": []
+    },
+    {
+      "id": "f2dfc8c0",
+      "cell_type": "code",
+      "source": "expand((3 + 4*I)**2)",
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": "-7 + 24*I",
+            "text/latex": "-7 + 24 i"
+          },
+          "metadata": {}
+        }
+      ],
+      "status": "success",
+      "execution_count": 3,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": []
+    }
+  ]
+}

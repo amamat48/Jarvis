@@ -36,12 +36,15 @@ TOOL_SECURITY = {
     "read_file": ToolSecurity("read_file", "low", "project-read", secret_sensitive=True),
     "list_files": ToolSecurity("list_files", "low", "project-read", secret_sensitive=True),
     "search_files": ToolSecurity("search_files", "low", "project-read", secret_sensitive=True),
+    "write_file": ToolSecurity("write_file", "high", "project-write", secret_sensitive=True, human_approval=True),
+    "edit_file": ToolSecurity("edit_file", "high", "project-write", secret_sensitive=True, human_approval=True),
     "remember_memory": ToolSecurity("remember_memory", "moderate", "memory-write", secret_sensitive=True),
     "recall_memory": ToolSecurity("recall_memory", "low", "memory-read", secret_sensitive=True),
-    "run_python_file": ToolSecurity("run_python_file", "high", "project-read-write", network=True, subprocess=True, secret_sensitive=True, human_approval=True),
-    "debug_python_file": ToolSecurity("debug_python_file", "high", "project-read-write", network=True, subprocess=True, secret_sensitive=True, human_approval=True),
+    "run_python_file": ToolSecurity("run_python_file", "high", "project-read-write", network=False, subprocess=False, secret_sensitive=True, human_approval=True),
+    "debug_python_file": ToolSecurity("debug_python_file", "high", "project-read-write", network=False, subprocess=False, secret_sensitive=True, human_approval=True),
     "install_package": ToolSecurity("install_package", "high", "environment-write", network=True, subprocess=True, secret_sensitive=True, human_approval=True),
     "delete_file": ToolSecurity("delete_file", "destructive", "project-write", secret_sensitive=True, human_approval=True),
+    "web_search": ToolSecurity("web_search", "moderate", network=True, human_approval=True),
 }
 
 SECRET_PARTS = {
@@ -259,7 +262,7 @@ class SecurityGate:
         metadata = TOOL_SECURITY.get(authorized.tool_name)
         if metadata is None:
             raise AuthorizationError("unknown capability")
-        if metadata.network or metadata.subprocess:
+        if metadata.subprocess or (metadata.network and authorized.tool_name != "web_search"):
             raise AuthorizationError("execution blocked: no OS-enforced sandbox is configured")
         allowed, reason = self._scope_decision(metadata, authorized.arguments)
         if not allowed:
@@ -351,6 +354,11 @@ class SecurityGate:
         if not candidate.is_relative_to(self.project_root):
             raise AuthorizationError("filesystem path escapes project scope")
         relative = candidate.relative_to(self.project_root)
+        folded_parts = tuple(part.casefold() for part in relative.parts)
+        if len(folded_parts) >= 2 and folded_parts[0] == "model" and folded_parts[1] in {
+            "evaluations", "training_data",
+        }:
+            raise AuthorizationError("model evaluation and training data are not tool-accessible")
         if any(self._is_secret_part(part) for part in relative.parts):
             raise AuthorizationError("secret or credential path denied")
         return candidate

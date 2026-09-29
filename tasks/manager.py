@@ -98,6 +98,8 @@ class TaskExecutionHooks:
     execute_authorized: Callable[[AuthorizedOperation], str]
     request_approval: Callable[[str, dict[str, Any], str], None]
     security_gate: SecurityGate
+    update_progress: Callable[[int], None]
+    update_step: Callable[[str, str, str], None]
 
 
 TaskExecutor = Callable[[TaskExecutionRequest, TaskExecutionHooks], str]
@@ -157,7 +159,7 @@ class TaskSubscription:
 
 
 class TaskManager:
-    """Owns task lifecycle, task contexts, the serial worker, and task events."""
+    """Owns task lifecycle, isolated task contexts, bounded workers, and task events."""
 
     def __init__(
         self,
@@ -165,9 +167,12 @@ class TaskManager:
         system_prompt: str = "",
         event_history_limit: int = 512,
         security_gate: SecurityGate = DEFAULT_SECURITY_GATE,
+        max_concurrent_tasks: int = 2,
     ):
         if event_history_limit < 1:
             raise ValueError("event_history_limit must be at least 1")
+        if max_concurrent_tasks < 1 or max_concurrent_tasks > 4:
+            raise ValueError("max_concurrent_tasks must be between 1 and 4")
 
         self.manager_epoch = str(uuid4())
         self._executor = executor
@@ -181,6 +186,9 @@ class TaskManager:
         self._committed_tasks: set[str] = set()
         self._queue: deque[str] = deque()
         self._active_task_id: str | None = None
+        self._active_task_ids: dict[str, None] = {}
+        self._active_conversations: set[str] = set()
+        self._max_concurrent_tasks = max_concurrent_tasks
         self._focused_task_id: str | None = None
         self._sequence = 0
         self._events: deque[TaskEvent] = deque(maxlen=event_history_limit)
@@ -189,12 +197,13 @@ class TaskManager:
         self._command_results: dict[str, CommandResult] = {}
         self._closed = False
         self.default_conversation_id = self.create_conversation()
-        self._worker = threading.Thread(
-            target=self._worker_loop,
-            name="jarvis-task-worker",
-            daemon=True,
-        )
-        self._worker.start()
+        self._workers = [
+            threading.Thread(target=self._worker_loop, name=f"jarvis-task-worker-{index + 1}", daemon=True)
+            for index in range(max_concurrent_tasks)
+        ]
+        self._worker = self._workers[0]  # Backward-compatible handle for existing integrations.
+        for worker in self._workers:
+            worker.start()
 
     def create_conversation(self) -> str:
         conversation_id = str(uuid4())
@@ -213,13 +222,14 @@ class TaskManager:
         text: str,
         conversation_id: str | None = None,
         command_id: str | None = None,
+        priority: str = "normal",
     ) -> CommandResult:
         return self.send_command(
             TaskCommand(
                 command_id=command_id or str(uuid4()),
                 command_type="submit_message",
                 conversation_id=conversation_id or self.default_conversation_id,
-                payload={"text": text},
+                payload={"text": text, "priority": priority},
             )
         )
 
@@ -430,6 +440,9 @@ class TaskManager:
             plan=[TaskStep("request", "Handle request")],
             created_at=self._now(),
             updated_at=self._now(),
+            title=text.strip().splitlines()[0][:120],
+            description=text.strip(),
+            priority=command.payload.get("priority", "normal") if command.payload.get("priority", "normal") in {"low", "normal", "high"} else "normal",
         )
         request = TaskExecutionRequest(
             task_id=task_id,
@@ -716,6 +729,7 @@ class TaskManager:
                 last_sequence=self._sequence,
                 focused_task_id=self._focused_task_id,
                 active_task_id=self._active_task_id,
+                active_task_ids=tuple(self._active_task_ids),
                 queued_task_ids=tuple(self._queue),
                 tasks=tuple(copy.deepcopy(tuple(self._tasks.values()))),
             )
@@ -765,31 +779,26 @@ class TaskManager:
         with self._condition:
             if not self._closed:
                 self._closed = True
+                active_ids = set(self._active_task_ids)
                 for task in self._tasks.values():
-                    if task.task_id == self._active_task_id or task.state in {
-                        TaskState.COMPLETED,
-                        TaskState.FAILED,
-                        TaskState.CANCELLED,
+                    if task.task_id in active_ids or task.state in {
+                        TaskState.COMPLETED, TaskState.FAILED, TaskState.CANCELLED,
                     }:
                         continue
                     self._remove_queued_locked(task.task_id)
-                    self._finish_locked(
-                        task,
-                        TaskState.CANCELLED,
-                        "Cancelled because JARVIS is shutting down.",
-                    )
-                if self._active_task_id:
-                    active = self._tasks[self._active_task_id]
+                    self._finish_locked(task, TaskState.CANCELLED, "Cancelled because JARVIS is shutting down.")
+                for task_id in tuple(active_ids):
+                    active = self._tasks[task_id]
                     active.cancel_requested = True
                     self._emit_locked(
-                        "task_control_requested",
-                        active,
+                        "task_control_requested", active,
                         {"control": "cancel", "reason": "shutdown"},
                         "Cancellation requested for shutdown",
                     )
                 self._condition.notify_all()
-        if wait and threading.current_thread() is not self._worker:
-            self._worker.join()
+        if wait and threading.current_thread() not in self._workers:
+            for worker in self._workers:
+                worker.join()
         with self._condition:
             for subscription in list(self._subscriptions):
                 subscription.close()
@@ -797,36 +806,44 @@ class TaskManager:
     def _worker_loop(self) -> None:
         while True:
             with self._condition:
-                while not self._queue and not self._closed:
-                    self._condition.wait()
-                if self._closed and not self._queue:
-                    return
-                task_id = self._queue.popleft()
+                task_id = None
+                while task_id is None:
+                    if self._closed and not self._queue:
+                        return
+                    if len(self._active_task_ids) < self._max_concurrent_tasks:
+                        for index, queued_id in enumerate(self._queue):
+                            queued = self._tasks.get(queued_id)
+                            if queued is None or queued.state != TaskState.QUEUED:
+                                continue
+                            if queued.conversation_id in self._active_conversations:
+                                continue
+                            if self._has_earlier_unfinished_task_locked(queued):
+                                continue
+                            task_id = queued_id
+                            del self._queue[index]
+                            break
+                    if task_id is None:
+                        self._condition.wait()
+
                 task = self._tasks[task_id]
-                if task.state != TaskState.QUEUED:
-                    continue
                 request = self._contexts[task_id]
                 if task_id not in self._initialized_contexts:
                     conversation = self._conversations[task.conversation_id]
                     request.messages = copy.deepcopy(conversation.messages)
                     request.base_message_count = len(request.messages)
-                    request.messages.append(
-                        {"role": "user", "content": request.user_message}
-                    )
+                    request.messages.append({"role": "user", "content": request.user_message})
                     request.seen_call_ids = conversation.seen_call_ids
                     self._initialized_contexts.add(task_id)
-                self._active_task_id = task_id
+                self._active_task_ids[task_id] = None
+                self._active_conversations.add(task.conversation_id)
+                self._active_task_id = next(iter(self._active_task_ids))
                 resuming_approval = request.approved_operation is not None or request.rejected_tool_result is not None
-                self._transition_locked(
-                    task, TaskState.RUNNING, "Execution started",
-                    increment_revision=not resuming_approval,
-                )
+                self._transition_locked(task, TaskState.RUNNING, "Execution started", increment_revision=not resuming_approval)
+                task.started_at = task.started_at or self._now()
                 if task.plan and not resuming_approval:
                     task.plan[0].state = StepState.RUNNING
                     self._emit_locked("plan_updated", task, self._plan_payload(task), "Plan step started")
-                self._set_activity_locked(
-                    task, "Processing request", increment_revision=not resuming_approval,
-                )
+                self._set_activity_locked(task, "Processing request", increment_revision=not resuming_approval)
                 hooks = self._make_hooks(task_id)
 
             outcome = None
@@ -843,11 +860,10 @@ class TaskManager:
             with self._condition:
                 task = self._tasks[task_id]
                 if error is not None and task.state == TaskState.RUNNING:
-                    self._finish_locked(task, TaskState.FAILED, f"Task failed: {error}")
+                    task.error = f"{type(error).__name__}: {error}"
+                    self._finish_locked(task, TaskState.FAILED, "Task failed.")
                 elif isinstance(outcome, _TaskCancelled) or (
-                    task.cancel_requested
-                    and task.state
-                    not in {TaskState.COMPLETED, TaskState.FAILED, TaskState.CANCELLED}
+                    task.cancel_requested and task.state not in {TaskState.COMPLETED, TaskState.FAILED, TaskState.CANCELLED}
                 ):
                     self._finish_locked(task, TaskState.CANCELLED, "Cancelled by user.")
                 elif isinstance(outcome, _TaskPaused):
@@ -856,7 +872,9 @@ class TaskManager:
                     self._transition_locked(task, TaskState.PAUSED, "Paused at a safe boundary")
                 elif task.state == TaskState.RUNNING:
                     self._finish_locked(task, TaskState.COMPLETED, str(outcome or ""))
-                self._active_task_id = None
+                self._active_task_ids.pop(task_id, None)
+                self._active_conversations.discard(task.conversation_id)
+                self._active_task_id = next(iter(self._active_task_ids), None)
                 self._condition.notify_all()
 
     def _make_hooks(self, task_id: str) -> TaskExecutionHooks:
@@ -872,6 +890,8 @@ class TaskManager:
                 task_id, name, arguments, call_id
             ),
             security_gate=self._security_gate,
+            update_progress=lambda progress: self._update_progress(task_id, progress),
+            update_step=lambda step_id, title, state: self._update_step(task_id, step_id, title, state),
         )
 
     def _task_context(self, task_id: str) -> TaskContext:
@@ -920,6 +940,49 @@ class TaskManager:
             if task.state == TaskState.RUNNING:
                 self._set_activity_locked(task, activity)
 
+    def _update_progress(self, task_id: str, progress: int) -> None:
+        if not isinstance(progress, int) or isinstance(progress, bool) or not 0 <= progress <= 100:
+            raise ValueError("Progress must be an integer from 0 to 100.")
+        with self._condition:
+            task = self._require_task_locked(task_id)
+            if task.state != TaskState.RUNNING or progress < task.progress:
+                return
+            if progress == task.progress:
+                return
+            task.progress = progress
+            self._emit_locked("progress_updated", task, {"progress": progress}, "Progress updated")
+
+    def _update_step(self, task_id: str, step_id: str, title: str, state: str) -> None:
+        if not isinstance(step_id, str) or not step_id or len(step_id) > 80:
+            raise ValueError("Step ID must be a non-empty string of at most 80 characters.")
+        if not isinstance(title, str) or not title or len(title) > 200:
+            raise ValueError("Step title must be a non-empty string of at most 200 characters.")
+        try:
+            requested_state = StepState(state)
+        except ValueError as error:
+            raise ValueError("Unsupported task step state.") from error
+        with self._condition:
+            task = self._require_task_locked(task_id)
+            if task.state != TaskState.RUNNING:
+                return
+            step = next((item for item in task.plan if item.step_id == step_id), None)
+            if step is None:
+                step = TaskStep(step_id, title)
+                task.plan.append(step)
+            elif step.title != title:
+                step.title = title
+            if step.state == StepState.COMPLETED and requested_state != StepState.COMPLETED:
+                return
+            for previous in task.plan:
+                if previous.state == StepState.RUNNING and previous.step_id != step_id:
+                    previous.state = StepState.COMPLETED
+                    task.statistics.steps_completed += 1
+            if step.state != requested_state:
+                if requested_state == StepState.COMPLETED and step.state != StepState.COMPLETED:
+                    task.statistics.steps_completed += 1
+                step.state = requested_state
+            self._emit_locked("plan_updated", task, self._plan_payload(task), "Work steps updated")
+
     def _tool_started(self, task_id: str, name: str) -> None:
         with self._condition:
             task = self._require_task_locked(task_id)
@@ -950,6 +1013,12 @@ class TaskManager:
         if state == TaskState.CANCELLED:
             self._security_gate.cancel_task(task.task_id)
         task.result = result
+        task.completed_at = self._now()
+        if state == TaskState.COMPLETED and task.progress < 100:
+            task.progress = 100
+            self._emit_locked("progress_updated", task, {"progress": 100}, "Progress completed", increment_revision=False)
+        elif state == TaskState.FAILED and task.error is None:
+            task.error = result
         task.pause_requested = False
         task.cancel_requested = False
         task.pending_question = None
@@ -963,13 +1032,18 @@ class TaskManager:
             request.rejected_tool_result = None
             request.deferred_tool_calls.clear()
         if task.plan:
-            task.plan[0].state = {
+            final_step_state = {
                 TaskState.COMPLETED: StepState.COMPLETED,
                 TaskState.FAILED: StepState.FAILED,
                 TaskState.CANCELLED: StepState.CANCELLED,
             }[state]
-            if state == TaskState.COMPLETED:
-                task.statistics.steps_completed += 1
+            for step in task.plan:
+                if step.state == StepState.RUNNING:
+                    step.state = final_step_state
+                    if final_step_state == StepState.COMPLETED:
+                        task.statistics.steps_completed += 1
+                elif step.state == StepState.PENDING and state in {TaskState.FAILED, TaskState.CANCELLED}:
+                    step.state = StepState.CANCELLED
             self._emit_locked("plan_updated", task, self._plan_payload(task), "Plan updated")
         self._commit_context_locked(task, completed=state == TaskState.COMPLETED)
         self._emit_locked("result_updated", task, {"result": result}, "Task result updated")
@@ -1070,6 +1144,15 @@ class TaskManager:
                 for step in task.plan
             ]
         }
+
+    def _has_earlier_unfinished_task_locked(self, candidate: Task) -> bool:
+        terminal = {TaskState.COMPLETED, TaskState.FAILED, TaskState.CANCELLED}
+        for task in self._tasks.values():
+            if task.task_id == candidate.task_id:
+                return False
+            if task.conversation_id == candidate.conversation_id and task.state not in terminal:
+                return True
+        return False
 
     def _require_task_locked(self, task_id: str) -> Task:
         task = self._tasks.get(task_id)

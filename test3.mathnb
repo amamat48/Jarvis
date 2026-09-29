@@ -1,0 +1,104 @@
+{
+  "metadata": {
+    "created": "2026-09-28T17:34:42.400756",
+    "modified": "2026-09-28T17:35:30.599474",
+    "version": "1.0"
+  },
+  "cells": [
+    {
+      "id": "49a98478",
+      "cell_type": "code",
+      "source": "simplify(sin(x)**2 + cos(x)**2)",
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": "1",
+            "text/latex": "1"
+          },
+          "metadata": {}
+        }
+      ],
+      "status": "success",
+      "execution_count": 1,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": []
+    },
+    {
+      "id": "0685840b",
+      "cell_type": "code",
+      "source": "diff(sin(x)**2, x)",
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": "2*sin(x)*cos(x)",
+            "text/latex": "2 \\sin{\\left(x \\right)} \\cos{\\left(x \\right)}"
+          },
+          "metadata": {}
+        }
+      ],
+      "status": "success",
+      "execution_count": 2,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": [
+        "x"
+      ]
+    },
+    {
+      "id": "23982a11",
+      "cell_type": "code",
+      "source": "integrate(x**2, x)",
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": "x**3/3",
+            "text/latex": "\\frac{x^{3}}{3}"
+          },
+          "metadata": {}
+        }
+      ],
+      "status": "success",
+      "execution_count": 3,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": [
+        "x"
+      ]
+    },
+    {
+      "id": "47db7418",
+      "cell_type": "code",
+      "source": "solve(x**2 - 4, x)",
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": "[-2, 2]",
+            "text/latex": "\\left[ -2, \\  2\\right]"
+          },
+          "metadata": {}
+        }
+      ],
+      "status": "success",
+      "execution_count": 4,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": [
+        "x",
+        "solve"
+      ]
+    }
+  ]
+}

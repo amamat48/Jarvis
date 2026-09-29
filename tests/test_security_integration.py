@@ -68,6 +68,20 @@ class SecurityIntegrationTests(unittest.TestCase):
             self.gate.propose(context, "read_file", {"path": ".env"})
         self.assertIn("Access denied", __import__("tools.file_reader", fromlist=["read_file"]).read_file(".env"))
 
+    def test_model_tools_cannot_access_training_or_evaluation_data(self):
+        from tools.file_manager import list_files
+        from tools.file_reader import read_file
+
+        for path in (
+            "model/evaluations/jarvis_eval_32.jsonl",
+            "model/training_data/v5/train.jsonl",
+        ):
+            with self.subTest(path=path), self.assertRaises(AuthorizationError):
+                self.gate.resolve_project_path(path)
+        self.assertIn("Access denied", read_file("model/evaluations/jarvis_eval_32.jsonl"))
+        visible_files = list_files().replace("/", "\\").casefold().splitlines()
+        self.assertFalse(any(path.startswith(("model\\evaluations\\", "model\\training_data\\")) for path in visible_files))
+
     def test_approved_operation_executes_exactly_once(self):
         calls = []
         metadata = ToolSecurity("test_approved", "high", "none", human_approval=True)
@@ -123,14 +137,15 @@ class SecurityIntegrationTests(unittest.TestCase):
         with self.assertRaises(AuthorizationError):
             self.gate.propose(TaskContext("unknown", 1), "not_registered", {})
 
-    def test_python_is_denied_even_after_approval(self):
+    def test_python_execution_works_after_approval(self):
         context = TaskContext("python", 1)
         operation, decision = self.gate.propose(context, "run_python_file", {"path": "tools/calculator.py"})
         self.assertTrue(decision.requires_approval)
         grant = self.gate.approve(context, operation)
         authorized = self.gate.authorize(context, operation, grant)
         result = runner.execute(context, authorized, gate=self.gate)
-        self.assertIn("sandbox", result.lower())
+        # With the subprocess execution adapter, execution should succeed
+        self.assertIn("exit code: 0", result.lower())
 
     def test_executor_checks_gate_before_dispatch(self):
         order = []

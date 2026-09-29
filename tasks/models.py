@@ -76,6 +76,13 @@ class Task:
     cancel_requested: bool = False
     created_at: str = ""
     updated_at: str = ""
+    title: str = ""
+    description: str = ""
+    priority: str = "normal"
+    progress: int = 0
+    started_at: str | None = None
+    completed_at: str | None = None
+    error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -117,6 +124,7 @@ class TaskSnapshot:
     active_task_id: str | None
     queued_task_ids: tuple[str, ...]
     tasks: tuple[Task, ...]
+    active_task_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

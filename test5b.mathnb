@@ -1,0 +1,59 @@
+{
+  "metadata": {
+    "created": "2026-09-28T17:41:01.169955",
+    "modified": "2026-09-28T17:41:17.630096",
+    "version": "1.0"
+  },
+  "cells": [
+    {
+      "id": "fb0068f4",
+      "cell_type": "code",
+      "source": "5*meter/second",
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": "5*meter/second",
+            "text/latex": "\\frac{5 \\text{m}}{\\text{s}}"
+          },
+          "metadata": {}
+        }
+      ],
+      "status": "success",
+      "execution_count": 1,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": []
+    },
+    {
+      "id": "37fb09e0",
+      "cell_type": "code",
+      "source": "convert(5*meter/second, kilometer/hour)",
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": "18*kilometer/hour",
+            "text/latex": "\\frac{18 \\text{km}}{\\text{hour}}"
+          },
+          "metadata": {}
+        }
+      ],
+      "status": "success",
+      "execution_count": 2,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": [
+        "meter",
+        "hour",
+        "convert",
+        "kilometer",
+        "second"
+      ]
+    }
+  ]
+}

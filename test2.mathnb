@@ -1,0 +1,74 @@
+{
+  "metadata": {
+    "created": "2026-09-28T17:33:50.107395",
+    "modified": "2026-09-28T17:34:24.887424",
+    "version": "1.0"
+  },
+  "cells": [
+    {
+      "id": "a6f6a8e5",
+      "cell_type": "code",
+      "source": "2 + 2",
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": "4",
+            "text/latex": "4"
+          },
+          "metadata": {}
+        }
+      ],
+      "status": "success",
+      "execution_count": 1,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": []
+    },
+    {
+      "id": "81d329cc",
+      "cell_type": "code",
+      "source": "x = 5",
+      "outputs": [],
+      "status": "success",
+      "execution_count": 4,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [
+        "dca55c9d"
+      ],
+      "defined_names": [
+        "x"
+      ],
+      "referenced_names": []
+    },
+    {
+      "id": "dca55c9d",
+      "cell_type": "code",
+      "source": "x * 3",
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": "15",
+            "text/latex": "15"
+          },
+          "metadata": {}
+        }
+      ],
+      "status": "success",
+      "execution_count": 3,
+      "metadata": {},
+      "dependencies": [
+        "81d329cc"
+      ],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": [
+        "x"
+      ]
+    }
+  ]
+}

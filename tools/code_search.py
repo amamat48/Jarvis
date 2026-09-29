@@ -43,7 +43,11 @@ def search_files(query: str) -> str:
 
         if any(_SECURITY._is_secret_part(part) for part in relative_path.parts):
             continue
-        if ".git" in relative_path.parts or ".venv" in relative_path.parts:
+        folded_parts = {part.casefold() for part in relative_path.parts}
+        if ".git" in folded_parts or ".venv" in folded_parts:
+            continue
+        # Keep benchmark and training corpora out of search results to prevent data leakage.
+        if {"model", "evaluations"}.issubset(folded_parts) or {"model", "training_data"}.issubset(folded_parts):
             continue
 
         if path.suffix.lower() not in SOURCE_EXTENSIONS:

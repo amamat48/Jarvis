@@ -1,3 +1,4 @@
+
 import queue
 import threading
 
@@ -5,8 +6,26 @@ from brain.orchestrator import execute_task_turn
 from brain.prompt import SYSTEM_PROMPT
 from tasks.manager import ResyncRequired, TaskManager
 from tasks.models import TaskState
-from voice_input import listen
-from voice_output import speak
+
+# Voice is an optional interface. JARVIS must remain fully functional
+# in text mode when voice dependencies are not installed.
+try:
+    from voice_input import listen
+    VOICE_INPUT_AVAILABLE = True
+    VOICE_INPUT_ERROR = None
+except (ImportError, ModuleNotFoundError) as error:
+    listen = None
+    VOICE_INPUT_AVAILABLE = False
+    VOICE_INPUT_ERROR = error
+
+try:
+    from voice_output import speak
+    VOICE_OUTPUT_AVAILABLE = True
+    VOICE_OUTPUT_ERROR = None
+except (ImportError, ModuleNotFoundError) as error:
+    speak = None
+    VOICE_OUTPUT_AVAILABLE = False
+    VOICE_OUTPUT_ERROR = error
 
 
 def _read_console(input_queue):
@@ -18,8 +37,19 @@ def _read_console(input_queue):
             return
 
         if line.strip().lower() == "voice":
+            if not VOICE_INPUT_AVAILABLE:
+                print(
+                    "Voice input is unavailable. Install the optional voice "
+                    "dependencies to enable it."
+                )
+                input_queue.put(("line", "", False))
+                continue
+
             print("Listening...")
-            input_queue.put(("message", listen(), True))
+            try:
+                input_queue.put(("message", listen(), True))
+            except Exception as error:
+                print(f"Voice input error: {error}")
             continue
 
         if line.strip().lower() == "exit":
@@ -51,38 +81,64 @@ def _render_event(event, voice_tasks):
 
     if event.event_type == "task_created":
         print(f"{task_label}Created: {payload.get('objective', '')}")
+
     elif event.event_type == "task_state_changed":
         new_state = payload.get("to_state", "")
         if new_state != TaskState.QUEUED.value:
             print(f"{task_label}State: {new_state.replace('_', ' ')}")
+
     elif event.event_type == "activity_updated":
         print(f"{task_label}{payload.get('current_activity', '')}")
+
     elif event.event_type == "tool_started":
         print(f"{task_label}Using {payload.get('tool_name', 'tool')}")
+
     elif event.event_type == "user_input_requested":
         print(f"{task_label}Question: {payload.get('prompt', '')}")
-        print(f"Answer with: answer {_short_id(event.task_id)} {payload.get('question_id', '')} <your response>")
+        print(
+            f"Answer with: answer {_short_id(event.task_id)} "
+            f"{payload.get('question_id', '')} <your response>"
+        )
+
     elif event.event_type == "approval_requested":
         print(
-            f"{task_label}Approval required: {payload.get('summary', '')} "
+            f"{task_label}Approval required: "
+            f"{payload.get('summary', '')} "
             f"(approval ID: {payload.get('approval_id', '')})"
         )
         print(
-            f"Use approve {_short_id(event.task_id)} {payload.get('approval_id', '')} "
-            f"or reject {_short_id(event.task_id)} {payload.get('approval_id', '')}."
+            f"Use approve {_short_id(event.task_id)} "
+            f"{payload.get('approval_id', '')} "
+            f"or reject {_short_id(event.task_id)} "
+            f"{payload.get('approval_id', '')}."
         )
+
     elif event.event_type == "focus_changed":
         focused = payload.get("focused_task_id")
         print(f"Focused task: {_short_id(focused) if focused else 'none'}")
+
     elif event.event_type == "task_finished":
         state = payload.get("state")
         result = payload.get("result", "")
+
         if state == TaskState.COMPLETED.value:
             print(f"{task_label}JARVIS: {result}")
+
             if voice_tasks.pop(event.task_id, False):
-                speak(result)
+                if VOICE_OUTPUT_AVAILABLE:
+                    try:
+                        speak(result)
+                    except Exception as error:
+                        print(f"Voice output error: {error}")
+                else:
+                    print(
+                        "Voice output is unavailable. Install the optional "
+                        "voice dependencies to enable speech."
+                    )
+
         elif state == TaskState.FAILED.value:
             print(f"{task_label}{result}")
+
         elif state == TaskState.CANCELLED.value:
             print(f"{task_label}Cancelled.")
 
@@ -90,11 +146,17 @@ def _render_event(event, voice_tasks):
 def _print_tasks(manager):
     snapshot = manager.get_snapshot()
     tasks = snapshot.tasks
+
     if not tasks:
         print("No tasks yet.")
         return
+
     for task in tasks:
-        focused = " (focused)" if task.task_id == snapshot.focused_task_id else ""
+        focused = (
+            " (focused)"
+            if task.task_id == snapshot.focused_task_id
+            else ""
+        )
         print(
             f"{_short_id(task.task_id)}  {task.state.value}{focused}  "
             f"{task.objective}  — {task.current_activity}"
@@ -104,9 +166,13 @@ def _print_tasks(manager):
 def _report_command(result):
     if result.accepted:
         if result.task_id:
-            print(f"[{_short_id(result.task_id)}] {result.message or 'Command accepted.'}")
+            print(
+                f"[{_short_id(result.task_id)}] "
+                f"{result.message or 'Command accepted.'}"
+            )
         elif result.message:
             print(result.message)
+
         if result.duplicate:
             print("Duplicate command ignored.")
     else:
@@ -115,6 +181,7 @@ def _report_command(result):
 
 def _handle_line(line, manager, conversation_id, voice_tasks):
     stripped = line.strip()
+
     if not stripped:
         return conversation_id
 
@@ -123,24 +190,39 @@ def _handle_line(line, manager, conversation_id, voice_tasks):
 
     if command in {"clear", "new"}:
         conversation_id = manager.create_conversation()
-        print("Started a new conversation. Existing tasks continue in their original contexts.")
+        print(
+            "Started a new conversation. Existing tasks continue "
+            "in their original contexts."
+        )
         return conversation_id
+
     if command == "help":
         print(
             "Commands: clear/new, tasks, focus <task>, background <task>, "
             "pause <task>, resume <task>, cancel <task>, "
             "answer <task> <question-id> <response>, "
-            "approve <task> <approval-id>, reject <task> <approval-id>, exit, voice"
+            "approve <task> <approval-id>, reject <task> <approval-id>, "
+            "exit, voice"
         )
         return conversation_id
+
     if command == "tasks":
         _print_tasks(manager)
         return conversation_id
-    if command in {"focus", "background", "pause", "resume", "cancel"}:
+
+    if command in {
+        "focus",
+        "background",
+        "pause",
+        "resume",
+        "cancel",
+    }:
         task_id = _resolve_task_id(manager, arguments.strip())
+
         if task_id is None:
             print("Task ID is missing, unknown, or ambiguous.")
             return conversation_id
+
         operation = {
             "focus": manager.focus_task,
             "background": manager.background_task,
@@ -148,45 +230,88 @@ def _handle_line(line, manager, conversation_id, voice_tasks):
             "resume": manager.resume_task,
             "cancel": manager.cancel_task,
         }[command]
+
         _report_command(operation(task_id))
         return conversation_id
+
     if command == "answer":
         parts = arguments.split(maxsplit=2)
+
         if len(parts) != 3:
             print("Usage: answer <task> <question-id> <response>")
             return conversation_id
+
         task_id = _resolve_task_id(manager, parts[0])
+
         if task_id is None:
             print("Task ID is missing, unknown, or ambiguous.")
             return conversation_id
-        _report_command(manager.answer_question(task_id, parts[1], parts[2]))
+
+        _report_command(
+            manager.answer_question(
+                task_id,
+                parts[1],
+                parts[2],
+            )
+        )
         return conversation_id
+
     if command in {"approve", "reject"}:
         parts = arguments.split(maxsplit=1)
+
         if len(parts) != 2:
             print(f"Usage: {command} <task> <approval-id>")
             return conversation_id
+
         task_id = _resolve_task_id(manager, parts[0])
+
         if task_id is None:
             print("Task ID is missing, unknown, or ambiguous.")
             return conversation_id
+
         task = manager.get_task(task_id)
-        operation = manager.approve_action if command == "approve" else manager.reject_action
-        _report_command(operation(task_id, parts[1], expected_revision=task.revision))
+
+        operation = (
+            manager.approve_action
+            if command == "approve"
+            else manager.reject_action
+        )
+
+        _report_command(
+            operation(
+                task_id,
+                parts[1],
+                expected_revision=task.revision,
+            )
+        )
         return conversation_id
 
-    result = manager.submit_message(stripped, conversation_id=conversation_id)
+    result = manager.submit_message(
+        stripped,
+        conversation_id=conversation_id,
+    )
+
     _report_command(result)
     return conversation_id
 
 
 def main():
-    manager = TaskManager(executor=execute_task_turn, system_prompt=SYSTEM_PROMPT)
+    manager = TaskManager(
+        executor=execute_task_turn,
+        system_prompt=SYSTEM_PROMPT,
+    )
+
     conversation_id = manager.default_conversation_id
     voice_tasks = {}
+
     snapshot = manager.get_snapshot()
-    subscription = manager.subscribe(snapshot.last_sequence, snapshot.manager_epoch)
+    subscription = manager.subscribe(
+        snapshot.last_sequence,
+        snapshot.manager_epoch,
+    )
+
     input_queue = queue.Queue()
+
     input_thread = threading.Thread(
         target=_read_console,
         args=(input_queue,),
@@ -195,17 +320,42 @@ def main():
     )
 
     print("JARVIS is online.")
-    print("Type 'help' for console/task commands. Submit another message while work runs to queue it.\n")
+
+    if not VOICE_INPUT_AVAILABLE:
+        print(
+            "Voice input: unavailable (optional dependencies not installed)."
+        )
+    elif not VOICE_OUTPUT_AVAILABLE:
+        print(
+            "Voice output: unavailable (optional dependencies not installed)."
+        )
+    else:
+        print("Voice interface: available.")
+
+    print(
+        "Type 'help' for console/task commands. "
+        "Submit another message while work runs to queue it.\n"
+    )
+
     input_thread.start()
 
     try:
         while True:
             event = subscription.get(timeout=0.05)
+
             if isinstance(event, ResyncRequired):
                 snapshot = manager.get_snapshot()
                 subscription.close()
-                subscription = manager.subscribe(snapshot.last_sequence, snapshot.manager_epoch)
-                print("Task event history refreshed from the current snapshot.")
+
+                subscription = manager.subscribe(
+                    snapshot.last_sequence,
+                    snapshot.manager_epoch,
+                )
+
+                print(
+                    "Task event history refreshed from the current snapshot."
+                )
+
             elif event is not None:
                 _render_event(event, voice_tasks)
 
@@ -216,17 +366,40 @@ def main():
 
             if kind == "exit":
                 active_task_id = manager.get_snapshot().active_task_id
+
                 if active_task_id:
-                    print("Stopping queued work and waiting for the active operation to reach a safe boundary...")
+                    print(
+                        "Stopping queued work and waiting for the active "
+                        "operation to reach a safe boundary..."
+                    )
+
                 break
+
             if kind == "message":
                 print(f"You (voice): {line}")
-                result = manager.submit_message(line, conversation_id=conversation_id)
+
+                result = manager.submit_message(
+                    line,
+                    conversation_id=conversation_id,
+                )
+
                 _report_command(result)
-                if result.accepted and result.task_id and using_voice:
+
+                if (
+                    result.accepted
+                    and result.task_id
+                    and using_voice
+                ):
                     voice_tasks[result.task_id] = True
+
             else:
-                conversation_id = _handle_line(line, manager, conversation_id, voice_tasks)
+                conversation_id = _handle_line(
+                    line,
+                    manager,
+                    conversation_id,
+                    voice_tasks,
+                )
+
     finally:
         subscription.close()
         manager.close(wait=True)
@@ -236,3 +409,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

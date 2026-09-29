@@ -1,0 +1,67 @@
+{
+  "metadata": {
+    "created": "2026-09-28T18:10:29.595045",
+    "modified": "2026-09-28T18:10:50.855297",
+    "version": "1.0"
+  },
+  "cells": [
+    {
+      "id": "f72a2dc2",
+      "cell_type": "code",
+      "source": "x = 42",
+      "outputs": [],
+      "status": "success",
+      "execution_count": 4,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [
+        "22ca6438"
+      ],
+      "defined_names": [
+        "x"
+      ],
+      "referenced_names": []
+    },
+    {
+      "id": "22ca6438",
+      "cell_type": "code",
+      "source": "y = x * 2",
+      "outputs": [],
+      "status": "success",
+      "execution_count": 2,
+      "metadata": {},
+      "dependencies": [
+        "f72a2dc2"
+      ],
+      "dependents": [],
+      "defined_names": [
+        "y"
+      ],
+      "referenced_names": [
+        "x"
+      ]
+    },
+    {
+      "id": "5f91fc9d",
+      "cell_type": "code",
+      "source": "simplify(sin(y)**2 + cos(y)**2)",
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": "1",
+            "text/latex": "1"
+          },
+          "metadata": {}
+        }
+      ],
+      "status": "success",
+      "execution_count": 3,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": []
+    }
+  ]
+}

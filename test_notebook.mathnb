@@ -1,0 +1,31 @@
+{
+  "metadata": {
+    "created": "2026-09-28T19:02:53.786540",
+    "modified": "2026-09-28T19:03:00.230737",
+    "version": "1.0"
+  },
+  "cells": [
+    {
+      "id": "d9003f17",
+      "cell_type": "code",
+      "source": "(2 + 3)^2",
+      "outputs": [
+        {
+          "output_type": "execute_result",
+          "data": {
+            "text/plain": "25",
+            "text/latex": "25"
+          },
+          "metadata": {}
+        }
+      ],
+      "status": "success",
+      "execution_count": 1,
+      "metadata": {},
+      "dependencies": [],
+      "dependents": [],
+      "defined_names": [],
+      "referenced_names": []
+    }
+  ]
+}

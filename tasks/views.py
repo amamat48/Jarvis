@@ -57,8 +57,14 @@ class TaskView:
     state: str
     revision: int
     objective: str
+    title: str
+    description: str
+    priority: str
+    progress: int
     current_activity: str
     created_at: str
+    started_at: str | None
+    completed_at: str | None
     updated_at: str
     plan: tuple[TaskStepView, ...]
     result: str | None
@@ -79,6 +85,7 @@ class TaskSnapshotView:
     active_task_id: str | None
     queued_task_ids: tuple[str, ...]
     tasks: tuple[TaskView, ...]
+    active_task_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -135,6 +142,7 @@ _EVENT_LABELS = {
     "activity_updated": "Activity updated",
     "plan_updated": "Plan updated",
     "statistics_updated": "Statistics updated",
+    "progress_updated": "Progress updated",
     "tool_started": "Authorized operation started",
     "tool_finished": "Authorized operation finished",
     "user_input_requested": "User input requested",
@@ -185,8 +193,14 @@ def project_task(task: Task) -> TaskView:
         state=state,
         revision=_safe_count(task.revision),
         objective=_safe_text(task.objective, 500),
+        title=_safe_text(task.title or task.objective, 120),
+        description=_safe_text(task.description or task.objective, 1000),
+        priority=task.priority if task.priority in {"low", "normal", "high"} else "normal",
+        progress=min(100, _safe_count(task.progress)),
         current_activity=_safe_activity(task.current_activity),
         created_at=_safe_text(task.created_at, 80),
+        started_at=_safe_text(task.started_at, 80) if task.started_at else None,
+        completed_at=_safe_text(task.completed_at, 80) if task.completed_at else None,
         updated_at=_safe_text(task.updated_at, 80),
         plan=_safe_step_views(task.plan),
         result=result,
@@ -233,6 +247,7 @@ def project_snapshot(snapshot: TaskSnapshot) -> TaskSnapshotView:
         last_sequence=snapshot.last_sequence,
         focused_task_id=snapshot.focused_task_id,
         active_task_id=snapshot.active_task_id,
+        active_task_ids=tuple(snapshot.active_task_ids),
         queued_task_ids=tuple(snapshot.queued_task_ids),
         tasks=tuple(project_task(task) for task in snapshot.tasks),
     )
@@ -264,6 +279,8 @@ def _safe_event_payload(event_type: str, payload: dict[str, Any]) -> dict[str, A
                 for step in _safe_step_views(payload.get("steps"))
             )
         }
+    if event_type == "progress_updated":
+        return {"progress": min(100, _safe_count(payload.get("progress")))}
     if event_type == "statistics_updated":
         return {
             key: _safe_count(payload[key])
@@ -272,6 +289,9 @@ def _safe_event_payload(event_type: str, payload: dict[str, Any]) -> dict[str, A
         }
     if event_type in {"tool_started", "tool_finished"}:
         result = {"activity": _EVENT_LABELS[event_type]}
+        tool_name = payload.get("tool_name")
+        if isinstance(tool_name, str) and tool_name in {"calculate", "read_file", "list_files", "search_files", "run_python_file", "debug_python_file", "remember_memory", "recall_memory", "web_search"}:
+            result["tool_name"] = tool_name
         if event_type == "tool_finished":
             status = payload.get("status")
             result["status"] = (
